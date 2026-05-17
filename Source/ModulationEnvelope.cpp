@@ -56,6 +56,11 @@ juce::String ModEnvelopeParamIds::pointValue (ModulationEnvelope::Lane lane, int
     return juce::String (getLaneDefinition (lane).prefix) + "Pt" + juce::String (index) + "_value";
 }
 
+juce::String ModEnvelopeParamIds::segmentCurve (ModulationEnvelope::Lane lane, int segmentIndex)
+{
+    return juce::String (getLaneDefinition (lane).prefix) + "Seg" + juce::String (segmentIndex) + "_curve";
+}
+
 void ModEnvelopeParamIds::addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout)
 {
     for (int laneIndex = 0; laneIndex < ModulationEnvelope::numLanes; ++laneIndex)
@@ -97,7 +102,55 @@ void ModEnvelopeParamIds::addParameters (juce::AudioProcessorValueTreeState::Par
                 definition.logScale ? juce::AudioParameterFloatAttributes().withLabel ("Hz")
                                     : juce::AudioParameterFloatAttributes()));
         }
+
+        for (int seg = 0; seg < ModulationEnvelope::maxSegments; ++seg)
+        {
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { segmentCurve (lane, seg), 1 },
+                juce::String (definition.prefix) + " seg " + juce::String (seg + 1) + " curve",
+                juce::NormalisableRange<float> { -1.0f, 1.0f, 0.001f },
+                0.0f));
+        }
     }
+}
+
+float ModulationEnvelope::applySegmentT (float t, float curve)
+{
+    t = juce::jlimit (0.0f, 1.0f, t);
+    curve = juce::jlimit (-1.0f, 1.0f, curve);
+
+    if (std::abs (curve) < 0.001f)
+        return t;
+
+    const auto exponent = 1.0f + std::abs (curve) * 4.0f;
+
+    // Up (curve > 0): fast start, slow settle — ease-out
+    if (curve > 0.0f)
+        return 1.0f - std::pow (1.0f - t, exponent);
+
+    // Down (curve < 0): slow start, fast finish — ease-in
+    return std::pow (t, exponent);
+}
+
+float ModulationEnvelope::evaluateSegment (float valueA, float valueB, float t, float curve)
+{
+    // Flip curve when the segment falls so drag-up / drag-down match screen direction.
+    if (valueB < valueA)
+        curve = -curve;
+
+    return juce::jmap (applySegmentT (t, curve), valueA, valueB);
+}
+
+float ModulationEnvelope::sampleSegment (float timeA, float valueA, float timeB, float valueB,
+                                         float elapsedSeconds, float curve)
+{
+    const auto span = timeB - timeA;
+
+    if (span <= 0.0f)
+        return valueB;
+
+    const auto t = juce::jlimit (0.0f, 1.0f, (elapsedSeconds - timeA) / span);
+    return evaluateSegment (valueA, valueB, t, curve);
 }
 
 void ModulationEnvelope::updateFromApvts (juce::AudioProcessorValueTreeState& apvts)
@@ -117,6 +170,9 @@ void ModulationEnvelope::updateFromApvts (juce::AudioProcessorValueTreeState& ap
             point.value = apvts.getRawParameterValue (ModEnvelopeParamIds::pointValue (lane, i))->load();
         }
 
+        for (int seg = 0; seg < maxSegments; ++seg)
+            laneEnvelope.segmentCurves[seg] = apvts.getRawParameterValue (ModEnvelopeParamIds::segmentCurve (lane, seg))->load();
+
         for (int i = 1; i < laneEnvelope.numPoints; ++i)
         {
             if (laneEnvelope.points[i].timeSeconds <= laneEnvelope.points[i - 1].timeSeconds)
@@ -135,6 +191,11 @@ int ModulationEnvelope::getNumPoints (Lane lane) const
 const ModLanePoint& ModulationEnvelope::getPoint (Lane lane, int index) const
 {
     return lanes[static_cast<size_t> (lane)].points[static_cast<size_t> (index)];
+}
+
+float ModulationEnvelope::getSegmentCurve (Lane lane, int segmentIndex) const
+{
+    return lanes[static_cast<size_t> (lane)].segmentCurves[static_cast<size_t> (segmentIndex)];
 }
 
 float ModulationEnvelope::getMaxTimeSeconds (Lane lane) const
@@ -162,18 +223,32 @@ float ModKnobSnapshot::getValue (ModulationEnvelope::Lane lane) const
     return 0.0f;
 }
 
-float ModEnvelopeParamIds::readKnobValue (ModulationEnvelope::Lane lane, juce::AudioProcessorValueTreeState& apvts)
+juce::String ModEnvelopeParamIds::knobParameterId (ModulationEnvelope::Lane lane)
 {
     switch (lane)
     {
-        case ModulationEnvelope::Lane::shape:     return apvts.getRawParameterValue ("waveform")->load();
-        case ModulationEnvelope::Lane::width:     return apvts.getRawParameterValue ("pulseWidth")->load();
-        case ModulationEnvelope::Lane::overtones: return apvts.getRawParameterValue ("overtones")->load();
-        case ModulationEnvelope::Lane::cutoff:    return apvts.getRawParameterValue ("filterCutoff")->load();
-        case ModulationEnvelope::Lane::resonance: return apvts.getRawParameterValue ("filterResonance")->load();
+        case ModulationEnvelope::Lane::shape:     return "waveform";
+        case ModulationEnvelope::Lane::width:     return "pulseWidth";
+        case ModulationEnvelope::Lane::overtones: return "overtones";
+        case ModulationEnvelope::Lane::cutoff:    return "filterCutoff";
+        case ModulationEnvelope::Lane::resonance: return "filterResonance";
     }
 
+    return {};
+}
+
+float ModEnvelopeParamIds::readKnobValue (ModulationEnvelope::Lane lane, juce::AudioProcessorValueTreeState& apvts)
+{
+    if (auto* param = apvts.getRawParameterValue (knobParameterId (lane)))
+        return param->load();
+
     return 0.0f;
+}
+
+void ModEnvelopeParamIds::setKnobValue (ModulationEnvelope::Lane lane, juce::AudioProcessorValueTreeState& apvts, float value)
+{
+    if (auto* param = apvts.getParameter (knobParameterId (lane)))
+        param->setValueNotifyingHost (param->convertTo0to1 (value));
 }
 
 ModKnobSnapshot ModEnvelopeParamIds::readKnobSnapshot (juce::AudioProcessorValueTreeState& apvts)
@@ -221,10 +296,9 @@ float ModulationEnvelope::interpolateLane (const ModLaneEnvelope& lane, float el
 
         if (elapsedSeconds >= a.timeSeconds && elapsedSeconds < b.timeSeconds)
         {
-            const auto span = b.timeSeconds - a.timeSeconds;
-            const auto t = span > 0.0f ? (elapsedSeconds - a.timeSeconds) / span : 0.0f;
             const auto valueA = (i == 0) ? startValue : a.value;
-            return juce::jmap (t, valueA, b.value);
+            const auto curve = lane.segmentCurves[static_cast<size_t> (i)];
+            return sampleSegment (a.timeSeconds, valueA, b.timeSeconds, b.value, elapsedSeconds, curve);
         }
     }
 

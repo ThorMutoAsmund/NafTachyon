@@ -6,7 +6,8 @@
 
 namespace
 {
-    constexpr float minTimeSpan = 0.25f;
+    /** Fixed graph timeline (matches mod point time parameter max). */
+    constexpr float graphTimeMaxSeconds = 10.0f;
     constexpr int toolbarHeight = 26;
     constexpr int editingRowHeight = 18;
     constexpr int timeAxisHeight = 16;
@@ -152,7 +153,9 @@ void ModEnvelopeEditor::refreshEnvelopeFromApvts()
 {
     envelope.updateFromApvts (apvts);
 
-    pointCountLabel.setText ("Points: " + juce::String (envelope.getNumPoints (activeLane)),
+    const auto lengthSeconds = envelope.getMaxTimeSeconds (activeLane);
+    pointCountLabel.setText ("Points: " + juce::String (envelope.getNumPoints (activeLane))
+                             + "  |  Length: " + juce::String (lengthSeconds, 1) + " s",
                              juce::dontSendNotification);
 }
 
@@ -261,15 +264,14 @@ float ModEnvelopeEditor::timeToX (float timeSeconds, juce::Rectangle<float> grap
 
 float ModEnvelopeEditor::timeToXForLane (float timeSeconds, juce::Rectangle<float> graph, Lane lane) const
 {
-    const auto maxTime = juce::jmax (envelope.getMaxTimeSeconds (lane), minTimeSpan);
-    return graph.getX() + (timeSeconds / maxTime) * graph.getWidth();
+    juce::ignoreUnused (lane);
+    return graph.getX() + (timeSeconds / graphTimeMaxSeconds) * graph.getWidth();
 }
 
 float ModEnvelopeEditor::xToTime (float x, juce::Rectangle<float> graph) const
 {
-    const auto maxTime = juce::jmax (envelope.getMaxTimeSeconds (activeLane), minTimeSpan);
     const auto proportion = juce::jlimit (0.0f, 1.0f, (x - graph.getX()) / graph.getWidth());
-    return proportion * maxTime;
+    return proportion * graphTimeMaxSeconds;
 }
 
 float ModEnvelopeEditor::valueToY (float normalized, juce::Rectangle<float> graph) const
@@ -298,8 +300,95 @@ void ModEnvelopeEditor::setPointTime (Lane lane, int index, float timeSeconds)
 
 void ModEnvelopeEditor::setPointValue (Lane lane, int index, float value)
 {
+    if (index == 0)
+    {
+        ModEnvelopeParamIds::setKnobValue (lane, apvts, value);
+        return;
+    }
+
     if (auto* param = apvts.getParameter (ModEnvelopeParamIds::pointValue (lane, index)))
         param->setValueNotifyingHost (param->convertTo0to1 (value));
+}
+
+void ModEnvelopeEditor::setSegmentCurve (Lane lane, int segmentIndex, float curve)
+{
+    if (auto* param = apvts.getParameter (ModEnvelopeParamIds::segmentCurve (lane, segmentIndex)))
+        param->setValueNotifyingHost (param->convertTo0to1 (juce::jlimit (-1.0f, 1.0f, curve)));
+}
+
+float ModEnvelopeEditor::getSegmentCurve (Lane lane, int segmentIndex) const
+{
+    return envelope.getSegmentCurve (lane, segmentIndex);
+}
+
+juce::Point<float> ModEnvelopeEditor::getSegmentHandlePosition (Lane lane, int segmentIndex, juce::Rectangle<float> graph) const
+{
+    const auto& ptA = envelope.getPoint (lane, segmentIndex);
+    const auto& ptB = envelope.getPoint (lane, segmentIndex + 1);
+    const auto valueA = getPointValue (lane, segmentIndex);
+    const auto valueB = getPointValue (lane, segmentIndex + 1);
+    const auto curve = envelope.getSegmentCurve (lane, segmentIndex);
+    const auto timeMid = (ptA.timeSeconds + ptB.timeSeconds) * 0.5f;
+    const auto valueMid = ModulationEnvelope::evaluateSegment (valueA, valueB, 0.5f, curve);
+
+    return { timeToXForLane (timeMid, graph, lane),
+             valueToY (laneToNormalized (lane, valueMid), graph) };
+}
+
+float ModEnvelopeEditor::curveFromHandleDrag (float startCurve, float startMouseY, juce::Point<float> pos,
+                                              juce::Rectangle<float> graph) const
+{
+    const auto sensitivity = juce::jmax (graph.getHeight() * 0.18f, 28.0f);
+    const auto delta = startMouseY - pos.y;
+
+    return juce::jlimit (-1.0f, 1.0f, startCurve + delta / sensitivity);
+}
+
+void ModEnvelopeEditor::buildLanePath (juce::Path& path, Lane lane, juce::Rectangle<float> graph) const
+{
+    const auto numPoints = envelope.getNumPoints (lane);
+
+    if (numPoints < 1)
+        return;
+
+    constexpr int stepsPerSegment = 24;
+
+    const auto x0 = timeToXForLane (envelope.getPoint (lane, 0).timeSeconds, graph, lane);
+    const auto y0 = valueToY (laneToNormalized (lane, getPointValue (lane, 0)), graph);
+    path.startNewSubPath (x0, y0);
+
+    for (int seg = 0; seg < numPoints - 1; ++seg)
+    {
+        const auto& ptA = envelope.getPoint (lane, seg);
+        const auto& ptB = envelope.getPoint (lane, seg + 1);
+        const auto valueA = getPointValue (lane, seg);
+        const auto valueB = getPointValue (lane, seg + 1);
+        const auto curve = envelope.getSegmentCurve (lane, seg);
+
+        for (int step = 1; step <= stepsPerSegment; ++step)
+        {
+            const auto t = static_cast<float> (step) / static_cast<float> (stepsPerSegment);
+            const auto time = juce::jmap (t, ptA.timeSeconds, ptB.timeSeconds);
+            const auto value = ModulationEnvelope::evaluateSegment (valueA, valueB, t, curve);
+            path.lineTo (timeToXForLane (time, graph, lane),
+                         valueToY (laneToNormalized (lane, value), graph));
+        }
+    }
+}
+
+int ModEnvelopeEditor::hitTestSegment (juce::Point<float> pos) const
+{
+    const auto graph = getGraphBounds();
+    const auto hitRadius = 7.0f;
+    const auto numPoints = envelope.getNumPoints (activeLane);
+
+    for (int seg = 0; seg < numPoints - 1; ++seg)
+    {
+        if (pos.getDistanceFrom (getSegmentHandlePosition (activeLane, seg, graph)) <= hitRadius)
+            return seg;
+    }
+
+    return -1;
 }
 
 int ModEnvelopeEditor::hitTestPoint (juce::Point<float> pos) const
@@ -341,14 +430,21 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
         g.drawHorizontalLine (juce::roundToInt (y), graph.getX(), graph.getRight());
     }
 
-    const auto maxTime = juce::jmax (envelope.getMaxTimeSeconds (activeLane), minTimeSpan);
     const auto timeAxis = juce::Rectangle<float> (graph.getX(), graph.getBottom() + 2.0f,
                                                   graph.getWidth(), static_cast<float> (timeAxisHeight));
     g.setColour (juce::Colour (0xff6d767e));
     g.setFont (juce::FontOptions (10.0f));
     g.drawText ("0 s", timeAxis.getX(), timeAxis.getY(), 36.0f, timeAxis.getHeight(), juce::Justification::centredLeft);
-    g.drawText (juce::String (maxTime, 1) + " s",
+    g.drawText (juce::String (graphTimeMaxSeconds, 0) + " s",
                 timeAxis.getRight() - 40.0f, timeAxis.getY(), 40.0f, timeAxis.getHeight(), juce::Justification::centredRight);
+
+    const auto endTime = envelope.getMaxTimeSeconds (activeLane);
+    if (endTime > 0.05f && endTime < graphTimeMaxSeconds)
+    {
+        const auto endX = timeToX (endTime, graph);
+        g.setColour (juce::Colour (0xff5a6369));
+        g.drawVerticalLine (juce::roundToInt (endX), graph.getY(), graph.getBottom());
+    }
 
     for (int laneIndex = 0; laneIndex < ModulationEnvelope::numLanes; ++laneIndex)
     {
@@ -360,20 +456,9 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
         const auto colour = laneColour (lane).withAlpha (baseAlpha);
         const auto strokeWidth = lane == activeLane ? 2.0f : 1.0f;
 
-        for (int i = 0; i < lanePointCount; ++i)
-        {
-            const auto& point = envelope.getPoint (lane, i);
-            const auto x = timeToXForLane (point.timeSeconds, graph, lane);
-            const auto y = valueToY (laneToNormalized (lane, getPointValue (lane, i)), graph);
-
-            if (i == 0)
-                path.startNewSubPath (x, y);
-            else
-                path.lineTo (x, y);
-        }
-
         if (lanePointCount > 0)
         {
+            buildLanePath (path, lane, graph);
             g.setColour (colour);
             g.strokePath (path, juce::PathStrokeType (strokeWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
@@ -384,7 +469,7 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
         const auto& point = envelope.getPoint (activeLane, i);
         const auto x = timeToX (point.timeSeconds, graph);
         const auto y = valueToY (laneToNormalized (activeLane, getPointValue (activeLane, i)), graph);
-        const auto isActive = (i == drag.pointIndex);
+        const auto isActive = (drag.target == DragTarget::point && i == drag.index);
 
         g.setColour (laneColour (activeLane).brighter (isActive ? 0.35f : 0.1f));
         g.fillEllipse (x - 5.0f, y - 5.0f, 10.0f, 10.0f);
@@ -400,21 +485,71 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
             g.drawText ("start", labelX, labelY, 32.0f, 10.0f, juce::Justification::centredLeft);
         }
     }
+
+    for (int seg = 0; seg < numPoints - 1; ++seg)
+    {
+        const auto handle = getSegmentHandlePosition (activeLane, seg, graph);
+        const auto isActive = (drag.target == DragTarget::segment && seg == drag.index);
+        const auto isCurved = std::abs (envelope.getSegmentCurve (activeLane, seg)) > 0.02f;
+
+        g.setColour (laneColour (activeLane).withAlpha (isCurved ? 0.85f : 0.5f).brighter (isActive ? 0.25f : 0.0f));
+        g.fillRoundedRectangle (handle.x - 4.0f, handle.y - 4.0f, 8.0f, 8.0f, 2.0f);
+        g.setColour (juce::Colour (0xff1a2024));
+        g.drawRoundedRectangle (handle.x - 4.0f, handle.y - 4.0f, 8.0f, 8.0f, 2.0f, 1.0f);
+    }
 }
 
 void ModEnvelopeEditor::mouseDown (const juce::MouseEvent& e)
 {
-    drag.pointIndex = hitTestPoint (e.position);
-    drag.active = drag.pointIndex >= 0;
+    const auto pointHit = hitTestPoint (e.position);
+
+    if (pointHit >= 0)
+    {
+        drag.target = DragTarget::point;
+        drag.index = pointHit;
+    }
+    else
+    {
+        const auto segmentHit = hitTestSegment (e.position);
+        drag.target = segmentHit >= 0 ? DragTarget::segment : DragTarget::none;
+        drag.index = segmentHit;
+    }
+
+    drag.active = drag.target != DragTarget::none;
+
+    if (drag.target == DragTarget::segment)
+    {
+        if (e.getNumberOfClicks() >= 2)
+        {
+            setSegmentCurve (activeLane, drag.index, 0.0f);
+            refreshEnvelopeFromApvts();
+            repaint();
+        }
+        else
+        {
+            drag.segmentDragStartCurve = envelope.getSegmentCurve (activeLane, drag.index);
+            drag.segmentDragStartY = e.position.y;
+        }
+    }
 }
 
 void ModEnvelopeEditor::mouseDrag (const juce::MouseEvent& e)
 {
-    if (! drag.active || drag.pointIndex < 0)
+    if (! drag.active || drag.index < 0)
         return;
 
     const auto graph = getGraphBounds();
-    const auto index = drag.pointIndex;
+
+    if (drag.target == DragTarget::segment)
+    {
+        setSegmentCurve (activeLane, drag.index,
+                         curveFromHandleDrag (drag.segmentDragStartCurve, drag.segmentDragStartY, e.position, graph));
+        refreshEnvelopeFromApvts();
+        repaint();
+        return;
+    }
+
+    const auto index = drag.index;
     const auto numPoints = envelope.getNumPoints (activeLane);
 
     auto newTime = xToTime (e.position.x, graph);
@@ -429,11 +564,8 @@ void ModEnvelopeEditor::mouseDrag (const juce::MouseEvent& e)
 
     setPointTime (activeLane, index, newTime);
 
-    if (index > 0)
-    {
-        const auto normalized = yToNormalized (e.position.y, graph);
-        setPointValue (activeLane, index, normalizedToLane (activeLane, normalized));
-    }
+    const auto normalized = yToNormalized (e.position.y, graph);
+    setPointValue (activeLane, index, normalizedToLane (activeLane, normalized));
 
     refreshEnvelopeFromApvts();
     repaint();
@@ -443,5 +575,6 @@ void ModEnvelopeEditor::mouseUp (const juce::MouseEvent& e)
 {
     juce::ignoreUnused (e);
     drag.active = false;
-    drag.pointIndex = -1;
+    drag.target = DragTarget::none;
+    drag.index = -1;
 }

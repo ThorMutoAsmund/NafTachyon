@@ -30,10 +30,20 @@ public:
     ~ModEnvelopeEditor() override;
 
 private:
+    enum class DragTarget
+    {
+        none,
+        point,
+        segment
+    };
+
     struct DragState
     {
-        int pointIndex = -1;
+        DragTarget target = DragTarget::none;
+        int index = -1;
         bool active = false;
+        float segmentDragStartCurve = 0.0f;
+        float segmentDragStartY = 0.0f;
     };
 
     float laneToNormalized (Lane lane, float value) const;
@@ -49,10 +59,20 @@ private:
     float yToNormalized (float y, juce::Rectangle<float> graph) const;
 
     int hitTestPoint (juce::Point<float> pos) const;
+    int hitTestSegment (juce::Point<float> pos) const;
     void refreshEnvelopeFromApvts();
     void setPointTime (Lane lane, int index, float timeSeconds);
     void setPointValue (Lane lane, int index, float value);
+    void setSegmentCurve (Lane lane, int segmentIndex, float curve);
     float getPointValue (Lane lane, int index) const;
+    float getSegmentCurve (Lane lane, int segmentIndex) const;
+
+    juce::Point<float> getSegmentHandlePosition (Lane lane, int segmentIndex, juce::Rectangle<float> graph) const;
+
+    float curveFromHandleDrag (float startCurve, float startMouseY, juce::Point<float> pos,
+                               juce::Rectangle<float> graph) const;
+
+    void buildLanePath (juce::Path& path, Lane lane, juce::Rectangle<float> graph) const;
 
     juce::AudioProcessorValueTreeState& apvts;
     ModulationEnvelope envelope;

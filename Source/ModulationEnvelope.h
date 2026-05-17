@@ -24,6 +24,7 @@ struct ModLanePoint
 struct ModLaneEnvelope
 {
     ModLanePoint points[6];
+    float segmentCurves[5] {};
     int numPoints = 2;
 };
 
@@ -33,7 +34,16 @@ class ModulationEnvelope
 {
 public:
     static constexpr int maxPoints = 6;
+    static constexpr int maxSegments = maxPoints - 1;
     static constexpr int numLanes = 5;
+
+    /** Segment curve in [-1, 1]: 0 = linear, positive = slow start, negative = slow end. */
+    static float applySegmentT (float t, float curve);
+
+    static float evaluateSegment (float valueA, float valueB, float t, float curve);
+
+    static float sampleSegment (float timeA, float valueA, float timeB, float valueB,
+                                float elapsedSeconds, float curve);
 
     enum class Lane
     {
@@ -57,6 +67,8 @@ public:
     bool isLaneEnabled (Lane lane, juce::AudioProcessorValueTreeState& apvts) const;
 
     const ModLaneEnvelope& getLane (Lane lane) const { return lanes[static_cast<size_t> (lane)]; }
+
+    float getSegmentCurve (Lane lane, int segmentIndex) const;
 
 private:
     static float interpolateLane (const ModLaneEnvelope& lane, float elapsedSeconds, float startValue);
@@ -83,9 +95,15 @@ namespace ModEnvelopeParamIds
     juce::String pointTime (ModulationEnvelope::Lane lane, int index);
     juce::String pointValue (ModulationEnvelope::Lane lane, int index);
 
+    juce::String segmentCurve (ModulationEnvelope::Lane lane, int segmentIndex);
+
     void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
 
+    juce::String knobParameterId (ModulationEnvelope::Lane lane);
+
     float readKnobValue (ModulationEnvelope::Lane lane, juce::AudioProcessorValueTreeState& apvts);
+
+    void setKnobValue (ModulationEnvelope::Lane lane, juce::AudioProcessorValueTreeState& apvts, float value);
 
     ModKnobSnapshot readKnobSnapshot (juce::AudioProcessorValueTreeState& apvts);
 

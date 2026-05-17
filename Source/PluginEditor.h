@@ -84,7 +84,7 @@ private:
 
     SectionPanel adsrGroup { "ADSR" };
 
-    SectionPanel waveformGroup { "WAVEFORM" };
+    SectionPanel waveformGroup { "WAVE" };
 
     SectionPanel evolveGroup { "EVOLVE" };
 
