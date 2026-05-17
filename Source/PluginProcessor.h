@@ -150,7 +150,7 @@ private:
 
     };
 
-
+    static constexpr int maxUnisonStack = 5;
 
     struct OscillatorVoice
 
@@ -171,6 +171,13 @@ private:
         double subPhaseIncrement = 0.0;
 
         double fifthPhaseIncrement = 0.0;
+
+        double unisonPhase[maxUnisonStack] {};
+        double unisonSubPhase[maxUnisonStack] {};
+        double unisonFifthPhase[maxUnisonStack] {};
+        double unisonPhaseIncrement[maxUnisonStack] {};
+        double unisonSubPhaseIncrement[maxUnisonStack] {};
+        double unisonFifthPhaseIncrement[maxUnisonStack] {};
 
         juce::int64 noteOnSample = 0;
 
@@ -220,8 +227,6 @@ private:
 
     static constexpr int maxVoices = 16;
 
-
-
     void startVoice (int midiNote, int velocity);
 
     void releaseVoice (int midiNote, float releaseSeconds);
@@ -231,6 +236,10 @@ private:
     void advanceEnvelope (OscillatorVoice& voice, float attackDelta, float decayDelta, float sustainLevel);
 
     void resetVoiceFilter (OscillatorVoice& voice);
+
+    void resetUnisonPhases (OscillatorVoice& voice);
+
+    void updateUnisonIncrements (OscillatorVoice& voice, float unison);
 
     FilterCoefficients makeFilterCoefficients (float cutoffHz, float resonance, FilterSlope slope) const;
 

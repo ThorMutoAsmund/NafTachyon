@@ -66,7 +66,11 @@ private:
 
     void layoutFilterControls (juce::Rectangle<int> area, int dialSize);
 
+    void layoutUnisonControls (juce::Rectangle<int> area, int dialSize);
+
     void layoutWaveformControls (juce::Rectangle<int> area, int dialSize, int previewWidth);
+
+    int unisonPanelWidthForDialSize (int dialSize) const;
 
     int uniformDialSize = 108;
 
@@ -89,6 +93,8 @@ private:
     SectionPanel evolveGroup { "EVOLVE" };
 
     SectionPanel filterGroup { "FILTER" };
+
+    SectionPanel unisonGroup { "UNISON" };
 
 
 
@@ -124,6 +130,10 @@ private:
 
     juce::Label filterSlopeLabel;
 
+    juce::Slider unisonSlider;
+
+    juce::Label unisonLabel;
+
 
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
@@ -151,6 +161,8 @@ private:
     std::unique_ptr<SliderAttachment> resonanceAttachment;
 
     std::unique_ptr<ComboBoxAttachment> filterSlopeAttachment;
+
+    std::unique_ptr<SliderAttachment> unisonAttachment;
 
 
 

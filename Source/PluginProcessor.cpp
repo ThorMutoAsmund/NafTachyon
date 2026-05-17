@@ -23,6 +23,39 @@ namespace
     constexpr auto filterSlopeParamId   = "filterSlope";
     constexpr auto overtonesParamId     = "overtones";
     constexpr auto pulseWidthParamId  = "pulseWidth";
+    constexpr auto unisonParamId      = "unison";
+
+    constexpr int unisonStackSize = 5;
+
+    struct UnisonSettings
+    {
+        int count = 1;
+        float normalise = 1.0f;
+        float detuneCents[unisonStackSize] {};
+    };
+
+    UnisonSettings calcUnisonSettings (float unison)
+    {
+        UnisonSettings settings;
+        unison = juce::jlimit (0.0f, 1.0f, unison);
+
+        if (unison < 0.001f)
+            return settings;
+
+        settings.count = 1 + static_cast<int> (std::round (unison * static_cast<float> (unisonStackSize - 1)));
+        const auto spreadCents = unison * 40.0f;
+
+        for (int i = 0; i < settings.count; ++i)
+        {
+            const auto position = settings.count > 1
+                                ? static_cast<float> (i) / static_cast<float> (settings.count - 1)
+                                : 0.5f;
+            settings.detuneCents[i] = juce::jmap (position, -spreadCents, spreadCents);
+        }
+
+        settings.normalise = 1.0f / std::sqrt (static_cast<float> (settings.count));
+        return settings;
+    }
 
     constexpr float waveformSegment = 1.0f / 3.0f;
 
@@ -105,7 +138,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { overtonesParamId, 1 },
-        "Overtones",
+        "Harmonics",
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
         0.0f));
 
@@ -128,6 +161,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
         "Filter slope",
         juce::StringArray { "6 dB", "12 dB", "24 dB" },
         0));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { unisonParamId, 1 },
+        "Unison",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
+        0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                if (value < 0.01f)
+                    return juce::String ("Off");
+
+                const auto voices = 1 + static_cast<int> (std::round (value * static_cast<float> (unisonStackSize - 1)));
+                return juce::String (voices) + " voices";
+            })));
 
     ModEnvelopeParamIds::addParameters (layout);
 
@@ -260,6 +308,33 @@ void NafTachyonAudioProcessor::resetVoiceFilter (OscillatorVoice& voice)
     voice.biquad2Z2 = 0.0f;
 }
 
+void NafTachyonAudioProcessor::resetUnisonPhases (OscillatorVoice& voice)
+{
+    for (int i = 0; i < maxUnisonStack; ++i)
+    {
+        voice.unisonPhase[i] = 0.0;
+        voice.unisonSubPhase[i] = 0.0;
+        voice.unisonFifthPhase[i] = 0.0;
+    }
+}
+
+void NafTachyonAudioProcessor::updateUnisonIncrements (OscillatorVoice& voice, float unison)
+{
+    const auto settings = calcUnisonSettings (unison);
+    const auto baseIncrement = voice.phaseIncrement;
+
+    for (int i = 0; i < maxUnisonStack; ++i)
+    {
+        const auto detuneRatio = i < settings.count
+                               ? std::pow (2.0, settings.detuneCents[i] / 1200.0)
+                               : 1.0;
+
+        voice.unisonPhaseIncrement[i] = baseIncrement * detuneRatio;
+        voice.unisonSubPhaseIncrement[i] = voice.unisonPhaseIncrement[i] * 0.5;
+        voice.unisonFifthPhaseIncrement[i] = voice.unisonPhaseIncrement[i] * WaveformSynth::perfectFifthRatio;
+    }
+}
+
 NafTachyonAudioProcessor::FilterCoefficients NafTachyonAudioProcessor::makeFilterCoefficients (float cutoffHz,
                                                                                                  float resonance,
                                                                                                  FilterSlope slope) const
@@ -333,8 +408,10 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
             voice.phase = 0.0;
             voice.subPhase = 0.0;
             voice.fifthPhase = 0.0;
+            resetUnisonPhases (voice);
             voice.noteOnSample = globalSampleCounter;
             voice.modKnobSnapshot = knobSnapshot;
+            updateUnisonIncrements (voice, apvts.getRawParameterValue (unisonParamId)->load());
             resetVoiceFilter (voice);
             return;
         }
@@ -353,12 +430,14 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
             voice.phase = 0.0;
             voice.subPhase = 0.0;
             voice.fifthPhase = 0.0;
+            resetUnisonPhases (voice);
             voice.level = static_cast<float> (velocity) / 127.0f;
             voice.envelopeLevel = 0.0f;
             voice.stage = EnvelopeStage::attack;
             voice.phaseIncrement = juce::MathConstants<double>::twoPi * frequency / currentSampleRate;
             voice.subPhaseIncrement = voice.phaseIncrement * 0.5;
             voice.fifthPhaseIncrement = voice.phaseIncrement * WaveformSynth::perfectFifthRatio;
+            updateUnisonIncrements (voice, apvts.getRawParameterValue (unisonParamId)->load());
             resetVoiceFilter (voice);
             return;
         }
@@ -493,6 +572,8 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto overtonesKnob = apvts.getRawParameterValue (overtonesParamId)->load();
     const auto cutoffKnob = apvts.getRawParameterValue (filterCutoffParamId)->load();
     const auto resonanceKnob = apvts.getRawParameterValue (filterResonanceParamId)->load();
+    const auto unisonAmount = apvts.getRawParameterValue (unisonParamId)->load();
+    const auto unisonSettings = calcUnisonSettings (unisonAmount);
 
     modulationEnvelope.updateFromApvts (apvts);
 
@@ -594,30 +675,72 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             if (! resonanceModEnabled)
                 resonance = filterResonanceSmoother.getNextValue();
 
-            const auto oscSample = WaveformSynth::computeOscillatorSample (voice.phase,
-                                                                           voice.subPhase,
-                                                                           voice.fifthPhase,
-                                                                           waveformMorph,
-                                                                           pulseWidth,
-                                                                           overtones)
-                                 * voice.level
-                                 * voice.envelopeLevel
-                                 * voiceGain;
+            updateUnisonIncrements (voice, unisonAmount);
+
+            float oscSample = 0.0f;
+
+            if (unisonSettings.count <= 1)
+            {
+                oscSample = WaveformSynth::computeOscillatorSample (voice.phase,
+                                                                      voice.subPhase,
+                                                                      voice.fifthPhase,
+                                                                      waveformMorph,
+                                                                      pulseWidth,
+                                                                      overtones);
+            }
+            else
+            {
+                for (int u = 0; u < unisonSettings.count; ++u)
+                {
+                    oscSample += WaveformSynth::computeOscillatorSample (voice.unisonPhase[u],
+                                                                         voice.unisonSubPhase[u],
+                                                                         voice.unisonFifthPhase[u],
+                                                                         waveformMorph,
+                                                                         pulseWidth,
+                                                                         overtones);
+                }
+
+                oscSample *= unisonSettings.normalise;
+            }
+
+            oscSample *= voice.level * voice.envelopeLevel * voiceGain;
 
             const auto filterCoeffs = makeFilterCoefficients (cutoffHz, resonance, filterSlope);
 
             outputSample += filterSample (oscSample, voice, filterCoeffs, filterSlope);
 
-            voice.phase += voice.phaseIncrement;
-            voice.subPhase += voice.subPhaseIncrement;
-            voice.fifthPhase += voice.fifthPhaseIncrement;
-            wrapPhase (voice.phase);
-            wrapPhase (voice.subPhase);
-            wrapPhase (voice.fifthPhase);
+            if (unisonSettings.count <= 1)
+            {
+                voice.phase += voice.phaseIncrement;
+                voice.subPhase += voice.subPhaseIncrement;
+                voice.fifthPhase += voice.fifthPhaseIncrement;
+                wrapPhase (voice.phase);
+                wrapPhase (voice.subPhase);
+                wrapPhase (voice.fifthPhase);
+            }
+            else
+            {
+                for (int u = 0; u < unisonSettings.count; ++u)
+                {
+                    voice.unisonPhase[u] += voice.unisonPhaseIncrement[u];
+                    voice.unisonSubPhase[u] += voice.unisonSubPhaseIncrement[u];
+                    voice.unisonFifthPhase[u] += voice.unisonFifthPhaseIncrement[u];
+                    wrapPhase (voice.unisonPhase[u]);
+                    wrapPhase (voice.unisonSubPhase[u]);
+                    wrapPhase (voice.unisonFifthPhase[u]);
+                }
+            }
         }
 
-        for (int channel = 0; channel < numOutputChannels; ++channel)
-            buffer.setSample (channel, sample, outputSample);
+        if (numOutputChannels >= 2)
+        {
+            buffer.setSample (0, sample, outputSample);
+            buffer.setSample (1, sample, outputSample);
+        }
+        else if (numOutputChannels == 1)
+        {
+            buffer.setSample (0, sample, outputSample);
+        }
     }
 
     globalSampleCounter += numSamples;

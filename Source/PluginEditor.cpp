@@ -131,6 +131,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     addAndMakeVisible (filterGroup);
 
+    addAndMakeVisible (unisonGroup);
+
 
 
     configureKnob (adsrGroup, attackSlider,  attackLabel,  "Attack");
@@ -147,7 +149,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureKnob (waveformGroup, pulseWidthSlider, pulseWidthLabel, "Width");
 
-    configureKnob (waveformGroup, overtonesSlider, overtonesLabel, "Overtones");
+    configureKnob (waveformGroup, overtonesSlider, overtonesLabel, "Harmonics");
 
     waveformGroup.addAndMakeVisible (waveformPreview);
 
@@ -160,6 +162,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
     configureKnob (filterGroup, resonanceSlider, resonanceLabel, "Resonance");
 
     configureFilterSlopeControl (filterGroup);
+
+    configureKnob (unisonGroup, unisonSlider, unisonLabel, "Unison");
 
 
 
@@ -187,6 +191,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     filterSlopeAttachment = std::make_unique<ComboBoxAttachment> (apvts, "filterSlope", filterSlopeCombo);
 
+    unisonAttachment      = std::make_unique<SliderAttachment> (apvts, "unison", unisonSlider);
+
 
 
     setWantsKeyboardFocus (false);
@@ -197,7 +203,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
 
 
-    setSize (580, 740);
+    setSize (700, 740);
 
 }
 
@@ -355,6 +361,19 @@ void NafTachyonAudioProcessorEditor::layoutAdsrKnobs (juce::Rectangle<int> area,
 
 
 
+int NafTachyonAudioProcessorEditor::unisonPanelWidthForDialSize (int dialSize) const
+{
+    return juce::jmax (120, dialSize + 52);
+}
+
+void NafTachyonAudioProcessorEditor::layoutUnisonControls (juce::Rectangle<int> area, int dialSize)
+{
+    auto labelRow = area.removeFromTop (labelRowHeight);
+    unisonLabel.setBounds (labelRow);
+
+    layoutCentredDial (unisonSlider, area, dialSize);
+}
+
 void NafTachyonAudioProcessorEditor::layoutFilterControls (juce::Rectangle<int> area, int dialSize)
 
 {
@@ -479,9 +498,15 @@ void NafTachyonAudioProcessorEditor::resized()
 
     area.removeFromBottom (sectionGap);
 
-    const auto filterArea = area.removeFromBottom (sectionPanelHeight);
+    auto filterRow = area.removeFromBottom (sectionPanelHeight);
 
     area.removeFromBottom (sectionGap);
+
+    const auto unisonWidth = unisonPanelWidthForDialSize (uniformDialSize);
+
+    const auto unisonArea = filterRow.removeFromRight (unisonWidth);
+
+    const auto filterArea = filterRow;
 
     const auto waveformArea = area.removeFromBottom (waveformPanelHeight);
 
@@ -508,6 +533,10 @@ void NafTachyonAudioProcessorEditor::resized()
     filterGroup.setBounds (filterArea);
 
     layoutFilterControls (filterGroup.getContentBounds(), uniformDialSize);
+
+    unisonGroup.setBounds (unisonArea);
+
+    layoutUnisonControls (unisonGroup.getContentBounds(), uniformDialSize);
 
 
 

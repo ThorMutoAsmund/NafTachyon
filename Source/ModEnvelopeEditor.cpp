@@ -25,7 +25,7 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
 
     laneSelector.addItem ("Shape",     1);
     laneSelector.addItem ("Width",     2);
-    laneSelector.addItem ("Overtones", 3);
+    laneSelector.addItem ("Harmonics", 3);
     laneSelector.addItem ("Cutoff",    4);
     laneSelector.addItem ("Resonance", 5);
     laneSelector.setSelectedId (1, juce::dontSendNotification);
@@ -235,7 +235,7 @@ juce::String ModEnvelopeEditor::laneLabel (Lane lane) const
     {
         case Lane::shape:     return "Shape";
         case Lane::width:     return "Width";
-        case Lane::overtones: return "Overtones";
+        case Lane::overtones: return "Harmonics";
         case Lane::cutoff:    return "Cutoff";
         case Lane::resonance: return "Resonance";
     }
