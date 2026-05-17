@@ -24,6 +24,22 @@ namespace
         proportion = juce::jlimit (0.0f, 1.0f, proportion);
         return std::exp (proportion * std::log (1.0f + graphTimeMaxSeconds)) - 1.0f;
     }
+
+    constexpr ModulationEnvelope::Lane laneSelectorOrder[] =
+    {
+        ModulationEnvelope::Lane::amplitude,
+        ModulationEnvelope::Lane::cutoff,
+        ModulationEnvelope::Lane::resonance,
+        ModulationEnvelope::Lane::shape,
+        ModulationEnvelope::Lane::width,
+        ModulationEnvelope::Lane::overtones,
+    };
+
+    ModulationEnvelope::Lane laneFromSelectorId (int selectedId)
+    {
+        const auto index = selectedId - 1;
+        return laneSelectorOrder[juce::jlimit (0, 5, index)];
+    }
 }
 
 ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsToUse)
@@ -36,16 +52,16 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
     enabledToggle.setMouseClickGrabsKeyboardFocus (false);
     addAndMakeVisible (enabledToggle);
 
-    laneSelector.addItem ("Shape",     1);
-    laneSelector.addItem ("Width",     2);
-    laneSelector.addItem ("Harmonics", 3);
-    laneSelector.addItem ("Cutoff",    4);
-    laneSelector.addItem ("Resonance", 5);
-    laneSelector.addItem ("Amplitude", 6);
+    laneSelector.addItem ("Amplitude", 1);
+    laneSelector.addItem ("Cutoff",    2);
+    laneSelector.addItem ("Resonance", 3);
+    laneSelector.addItem ("Shape",     4);
+    laneSelector.addItem ("Width",     5);
+    laneSelector.addItem ("Harmonics", 6);
     laneSelector.setSelectedId (1, juce::dontSendNotification);
     laneSelector.onChange = [this]
     {
-        activeLane = static_cast<Lane> (laneSelector.getSelectedId() - 1);
+        activeLane = laneFromSelectorId (laneSelector.getSelectedId());
         updateEditingLabel();
         updateEnabledAttachment();
         refreshEnvelopeFromApvts();

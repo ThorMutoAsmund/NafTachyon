@@ -77,7 +77,7 @@ private:
     juce::AudioProcessorValueTreeState& apvts;
     ModulationEnvelope envelope;
 
-    Lane activeLane = Lane::shape;
+    Lane activeLane = Lane::amplitude;
     DragState drag;
 
     juce::ToggleButton enabledToggle { "On" };
