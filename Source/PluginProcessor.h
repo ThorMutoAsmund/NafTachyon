@@ -163,6 +163,12 @@ private:
 
         juce::int64 noteOnSample = 0;
 
+        juce::int64 noteOffSample = 0;
+
+        bool inRelease = false;
+
+        float releaseStartAmplitude = 1.0f;
+
         float level = 0.0f;
 
         float onePoleState = 0.0f;
@@ -197,6 +203,9 @@ private:
 
         float a2 = 0.0f;
 
+        /** 6 dB mode: 0 = one-pole only, 1 = full resonant biquad blend. */
+        float sixDbResonantBlend = 0.0f;
+
     };
 
 
@@ -205,9 +214,13 @@ private:
 
     void startVoice (int midiNote, int velocity);
 
+    void beginVoiceRelease (OscillatorVoice& voice, bool immediate);
+
+    float getVoiceAmplitudeForRelease (const OscillatorVoice& voice);
+
     void releaseVoice (int midiNote);
 
-    void releaseAllVoices();
+    void releaseAllVoices (bool immediate);
 
     void resetVoiceFilter (OscillatorVoice& voice);
 

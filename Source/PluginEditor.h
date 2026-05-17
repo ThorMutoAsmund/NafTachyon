@@ -100,7 +100,11 @@ private:
 
     juce::Slider amplitudeSlider;
 
+    juce::Slider releaseTimeSlider;
+
     juce::Label amplitudeLabel;
+
+    juce::Label releaseTimeLabel;
 
 
 
@@ -143,6 +147,8 @@ private:
 
 
     std::unique_ptr<SliderAttachment> amplitudeAttachment;
+
+    std::unique_ptr<SliderAttachment> releaseTimeAttachment;
 
     std::unique_ptr<SliderAttachment> waveformAttachment;
 

@@ -137,6 +137,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureKnob (mainGroup, amplitudeSlider, amplitudeLabel, "Amplitude");
 
+    configureKnob (mainGroup, releaseTimeSlider, releaseTimeLabel, "Release Time");
+
 
 
     configureKnob (waveformGroup, waveformSlider, waveformLabel, "Shape");
@@ -166,6 +168,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
 
     amplitudeAttachment  = std::make_unique<SliderAttachment> (apvts, "amplitude",       amplitudeSlider);
+
+    releaseTimeAttachment = std::make_unique<SliderAttachment> (apvts, "releaseTime",     releaseTimeSlider);
 
     waveformAttachment   = std::make_unique<SliderAttachment> (apvts, "waveform",        waveformSlider);
 
@@ -321,11 +325,17 @@ void NafTachyonAudioProcessorEditor::layoutMainControls (juce::Rectangle<int> ar
 
 {
 
+    const int columnWidth = area.getWidth() / 2;
+
     auto labelRow = area.removeFromTop (labelRowHeight);
 
-    amplitudeLabel.setBounds (labelRow);
+    amplitudeLabel.setBounds (labelRow.removeFromLeft (columnWidth));
 
-    layoutCentredDial (amplitudeSlider, area, dialSize);
+    releaseTimeLabel.setBounds (labelRow);
+
+    layoutCentredDial (amplitudeSlider, area.removeFromLeft (columnWidth), dialSize);
+
+    layoutCentredDial (releaseTimeSlider, area, dialSize);
 
 }
 

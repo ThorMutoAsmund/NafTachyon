@@ -14,6 +14,7 @@
 namespace
 {
     constexpr auto amplitudeParamId     = "amplitude";
+    constexpr auto releaseTimeParamId   = "releaseTime";
     constexpr auto waveformParamId      = "waveform";
     constexpr auto filterCutoffParamId  = "filterCutoff";
     constexpr auto filterResonanceParamId = "filterResonance";
@@ -55,6 +56,16 @@ namespace
     }
 
     constexpr float waveformSegment = 1.0f / 3.0f;
+
+    /** ~60 dB decay over releaseTimeSeconds. */
+    float exponentialReleaseGain (float releaseElapsedSeconds, float releaseTimeSeconds)
+    {
+        if (releaseTimeSeconds <= 0.001f)
+            return 0.0f;
+
+        const auto gain = std::exp (-releaseElapsedSeconds * 6.90775527898f / releaseTimeSeconds);
+        return gain < 1.0e-4f ? 0.0f : gain;
+    }
 
     void wrapPhase (double& phase)
     {
@@ -98,6 +109,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
         juce::AudioParameterFloatAttributes().withLabel ("")));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { releaseTimeParamId, 1 },
+        "Release Time",
+        juce::NormalisableRange<float> { 0.0f, 5.0f, 0.001f, 0.35f },
+        0.3f,
+        juce::AudioParameterFloatAttributes().withLabel ("s")));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { waveformParamId, 1 },
         "Waveform",
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
@@ -108,9 +126,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { pulseWidthParamId, 1 },
-        "Pulse Width",
+        "Width",
         juce::NormalisableRange<float> { -1.0f, 1.0f, 0.001f },
-        0.0f));
+        0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value * 100.0f)) + "%";
+            })));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { overtonesParamId, 1 },
@@ -213,6 +236,9 @@ bool NafTachyonAudioProcessor::isMidiEffect() const
 
 double NafTachyonAudioProcessor::getTailLengthSeconds() const
 {
+    if (auto* releaseTime = apvts.getRawParameterValue (releaseTimeParamId))
+        return static_cast<double> (releaseTime->load()) + 0.05;
+
     return 0.0;
 }
 
@@ -248,7 +274,7 @@ void NafTachyonAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     juce::ignoreUnused (samplesPerBlock);
     currentSampleRate = sampleRate;
     globalSampleCounter = 0;
-    releaseAllVoices();
+    releaseAllVoices (true);
 
     constexpr auto filterSmoothingSeconds = 0.03;
 
@@ -276,7 +302,7 @@ void NafTachyonAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
 
 void NafTachyonAudioProcessor::releaseResources()
 {
-    releaseAllVoices();
+    releaseAllVoices (true);
 }
 
 void NafTachyonAudioProcessor::resetVoiceFilter (OscillatorVoice& voice)
@@ -328,10 +354,16 @@ NafTachyonAudioProcessor::FilterCoefficients NafTachyonAudioProcessor::makeFilte
     coeffs.onePoleCoeff = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * frequency
                                            / static_cast<float> (currentSampleRate));
 
-    if (slope == FilterSlope::sixDb)
-        return coeffs;
-
     const auto resonanceShaped = resonance * resonance * resonance;
+
+    if (slope == FilterSlope::sixDb)
+    {
+        coeffs.sixDbResonantBlend = resonanceShaped;
+
+        if (resonanceShaped < 0.001f)
+            return coeffs;
+    }
+
     const auto q = juce::jmap (resonanceShaped, 0.5f, 12.0f);
     const auto w0 = juce::MathConstants<float>::twoPi * frequency / static_cast<float> (currentSampleRate);
     const auto cosW0 = std::cos (w0);
@@ -356,7 +388,21 @@ float NafTachyonAudioProcessor::filterSample (float input,
     if (slope == FilterSlope::sixDb)
     {
         voice.onePoleState += coeffs.onePoleCoeff * (input - voice.onePoleState);
-        return voice.onePoleState;
+        const auto onePoleOut = voice.onePoleState;
+
+        if (coeffs.sixDbResonantBlend < 0.001f)
+            return onePoleOut;
+
+        auto processBiquad = [&] (float sample, float& z1, float& z2) -> float
+        {
+            const auto output = coeffs.b0 * sample + z1;
+            z1 = coeffs.b1 * sample - coeffs.a1 * output + z2;
+            z2 = coeffs.b2 * sample - coeffs.a2 * output;
+            return output;
+        };
+
+        const auto biquadOut = processBiquad (input, voice.biquad1Z1, voice.biquad1Z2);
+        return juce::jmap (coeffs.sixDbResonantBlend, onePoleOut, biquadOut);
     }
 
     auto processBiquad = [&] (float sample, float& z1, float& z2) -> float
@@ -384,6 +430,7 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
         if (voice.isActive && voice.midiNote == midiNote)
         {
             voice.level = static_cast<float> (velocity) / 127.0f;
+            voice.inRelease = false;
             voice.phase = 0.0;
             voice.subPhase = 0.0;
             voice.fifthPhase = 0.0;
@@ -404,6 +451,7 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
 
             voice.isActive = true;
             voice.midiNote = midiNote;
+            voice.inRelease = false;
             voice.noteOnSample = globalSampleCounter;
             voice.modKnobSnapshot = knobSnapshot;
             voice.phase = 0.0;
@@ -421,28 +469,53 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
     }
 }
 
+float NafTachyonAudioProcessor::getVoiceAmplitudeForRelease (const OscillatorVoice& voice)
+{
+    const auto noteOnElapsed = static_cast<float> (globalSampleCounter - voice.noteOnSample)
+                             / static_cast<float> (currentSampleRate);
+
+    if (modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::amplitude, apvts))
+        return modulationEnvelope.evaluate (noteOnElapsed, voice.modKnobSnapshot).amplitude;
+
+    return apvts.getRawParameterValue (amplitudeParamId)->load();
+}
+
+void NafTachyonAudioProcessor::beginVoiceRelease (OscillatorVoice& voice, bool immediate)
+{
+    if (! voice.isActive)
+        return;
+
+    const auto releaseTimeSeconds = apvts.getRawParameterValue (releaseTimeParamId)->load();
+
+    if (immediate || releaseTimeSeconds <= 0.001f)
+    {
+        voice.isActive = false;
+        voice.inRelease = false;
+        resetVoiceFilter (voice);
+        return;
+    }
+
+    if (voice.inRelease)
+        return;
+
+    voice.releaseStartAmplitude = getVoiceAmplitudeForRelease (voice);
+    voice.inRelease = true;
+    voice.noteOffSample = globalSampleCounter;
+}
+
 void NafTachyonAudioProcessor::releaseVoice (int midiNote)
 {
     for (auto& voice : voices)
     {
         if (voice.isActive && voice.midiNote == midiNote)
-        {
-            voice.isActive = false;
-            resetVoiceFilter (voice);
-        }
+            beginVoiceRelease (voice, false);
     }
 }
 
-void NafTachyonAudioProcessor::releaseAllVoices()
+void NafTachyonAudioProcessor::releaseAllVoices (bool immediate)
 {
     for (auto& voice : voices)
-    {
-        if (! voice.isActive)
-            continue;
-
-        voice.isActive = false;
-        resetVoiceFilter (voice);
-    }
+        beginVoiceRelease (voice, immediate);
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -510,6 +583,7 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     const auto filterSlopeIndex = juce::jlimit (0, 2, static_cast<int> (std::round (apvts.getRawParameterValue (filterSlopeParamId)->load())));
     const auto filterSlope = static_cast<FilterSlope> (filterSlopeIndex);
+    const auto releaseTimeSeconds = apvts.getRawParameterValue (releaseTimeParamId)->load();
 
     for (const auto metadata : midiMessages)
     {
@@ -519,8 +593,10 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             startVoice (message.getNoteNumber(), message.getVelocity());
         else if (message.isNoteOff())
             releaseVoice (message.getNoteNumber());
-        else if (message.isAllNotesOff() || message.isAllSoundOff())
-            releaseAllVoices();
+        else if (message.isAllNotesOff())
+            releaseAllVoices (false);
+        else if (message.isAllSoundOff())
+            releaseAllVoices (true);
     }
 
     const auto numSamples = buffer.getNumSamples();
@@ -535,6 +611,23 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         {
             if (! voice.isActive)
                 continue;
+
+            float releaseGain = 1.0f;
+
+            if (voice.inRelease)
+            {
+                const auto releaseElapsed = static_cast<float> (globalSampleCounter + sample - voice.noteOffSample)
+                                          / static_cast<float> (currentSampleRate);
+                releaseGain = exponentialReleaseGain (releaseElapsed, releaseTimeSeconds);
+
+                if (releaseGain <= 0.0f)
+                {
+                    voice.isActive = false;
+                    voice.inRelease = false;
+                    resetVoiceFilter (voice);
+                    continue;
+                }
+            }
 
             auto waveformMorph = waveformMorphKnob;
             auto pulseWidth = pulseWidthKnob;
@@ -564,9 +657,14 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 if (resonanceModEnabled)
                     resonance = modParams.resonance;
 
-                if (amplitudeModEnabled)
+                if (amplitudeModEnabled && ! voice.inRelease)
                     amplitude = modParams.amplitude;
             }
+
+            if (voice.inRelease)
+                amplitude = voice.releaseStartAmplitude * releaseGain;
+            else if (! amplitudeModEnabled)
+                amplitude = amplitudeSmoother.getNextValue();
 
             if (! widthModEnabled)
                 pulseWidth = pulseWidthSmoother.getNextValue();
@@ -579,9 +677,6 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
             if (! resonanceModEnabled)
                 resonance = filterResonanceSmoother.getNextValue();
-
-            if (! amplitudeModEnabled)
-                amplitude = amplitudeSmoother.getNextValue();
 
             updateUnisonIncrements (voice, unisonAmount);
 

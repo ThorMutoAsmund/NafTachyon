@@ -7,8 +7,17 @@
 namespace
 {
     constexpr float waveformSegment = 1.0f / 3.0f;
-    constexpr float minPulseDuty = 0.06f;
-    constexpr float maxPulseDuty = 0.94f;
+    constexpr float dutyEpsilon = 0.0001f;
+
+    float pulseWidthGain (float pulseWidth)
+    {
+        pulseWidth = juce::jlimit (-1.0f, 1.0f, pulseWidth);
+
+        if (std::abs (pulseWidth) >= 1.0f)
+            return 0.0f;
+
+        return 1.0f;
+    }
 
     float waveSine (double phase)
     {
@@ -35,10 +44,10 @@ namespace
     {
         pulseWidth = juce::jlimit (-1.0f, 1.0f, pulseWidth);
 
-        if (std::abs (pulseWidth) < 1.0e-5f)
+        if (std::abs (pulseWidth) >= 1.0f)
             return phase;
 
-        const auto duty = juce::jmap (pulseWidth, -1.0f, 1.0f, minPulseDuty, maxPulseDuty);
+        const auto duty = juce::jmap (pulseWidth, -1.0f, 1.0f, dutyEpsilon, 1.0f - dutyEpsilon);
         auto cyclePos = std::fmod (phase / juce::MathConstants<double>::twoPi, 1.0);
 
         if (cyclePos < 0.0)
@@ -47,9 +56,9 @@ namespace
         double warpedPos = 0.0;
 
         if (cyclePos < duty)
-            warpedPos = (cyclePos / duty) * 0.5;
+            warpedPos = (cyclePos / static_cast<double> (duty)) * 0.5;
         else
-            warpedPos = 0.5 + ((cyclePos - duty) / (1.0 - duty)) * 0.5;
+            warpedPos = 0.5 + ((cyclePos - duty) / static_cast<double> (1.0f - duty)) * 0.5;
 
         return warpedPos * juce::MathConstants<double>::twoPi;
     }
@@ -109,5 +118,5 @@ float WaveformSynth::computeOscillatorSample (double phase,
         mixLevel += fifthBlend;
     }
 
-    return mixedSample / mixLevel;
+    return (mixedSample / mixLevel) * pulseWidthGain (pulseWidth);
 }
