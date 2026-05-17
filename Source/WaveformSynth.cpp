@@ -28,26 +28,6 @@ namespace
         return 0.0;
     }
 
-    double polyBlamp (double t, double dt)
-    {
-        if (dt <= 0.0)
-            return 0.0;
-
-        if (t < dt)
-        {
-            t /= dt;
-            return (t * t * t) / 3.0 - t * t + t;
-        }
-
-        if (t > 1.0 - dt)
-        {
-            t = (t - 1.0) / dt;
-            return -((t * t * t) / 3.0) - t * t - t;
-        }
-
-        return 0.0;
-    }
-
     void wrapCyclePosition (double& cyclePos)
     {
         cyclePos = std::fmod (cyclePos, 1.0);
@@ -63,22 +43,11 @@ namespace
 
     float waveTriangle (double phase, double phaseIncrement)
     {
-        auto cyclePos = phase / juce::MathConstants<double>::twoPi;
-        wrapCyclePosition (cyclePos);
+        juce::ignoreUnused (phaseIncrement);
 
-        const auto dt = phaseIncrement / juce::MathConstants<double>::twoPi;
-        auto sample = static_cast<float> (4.0 * std::abs (cyclePos - 0.5) - 1.0);
-
-        sample += static_cast<float> (polyBlamp (cyclePos, dt));
-
-        auto oppositeCorner = cyclePos + 0.5;
-
-        if (oppositeCorner >= 1.0)
-            oppositeCorner -= 1.0;
-
-        sample -= static_cast<float> (polyBlamp (oppositeCorner, dt));
-
-        return sample;
+        // Band-limited triangle via asin(sin); peaks at quarter-cycle, not inverted V.
+        return static_cast<float> ((2.0 / juce::MathConstants<double>::pi)
+                                   * std::asin (std::sin (phase)));
     }
 
     float waveSaw (double phase, double phaseIncrement)

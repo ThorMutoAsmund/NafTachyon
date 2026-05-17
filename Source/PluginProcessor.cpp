@@ -94,7 +94,6 @@ namespace
     constexpr float maxVibratoCents = 50.0f;
     /** Standard MIDI pitch-bend wheel range (±2 semitones). */
     constexpr float pitchBendRangeSemitones = 2.0f;
-
     double vibratoPitchRatio (double lfoPhase, float modWheelDepth)
     {
         const auto cents = std::sin (lfoPhase) * modWheelDepth * maxVibratoCents;
@@ -370,11 +369,65 @@ void NafTachyonAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
 
     if (auto* amplitude = apvts.getRawParameterValue (amplitudeParamId))
         amplitudeSmoother.setCurrentAndTargetValue (amplitude->load());
+
+    updateDcHighpassCoefficients();
+    resetDcHighpassState();
 }
 
 void NafTachyonAudioProcessor::releaseResources()
 {
     releaseAllVoices (true);
+    resetDcHighpassState();
+}
+
+void NafTachyonAudioProcessor::updateDcHighpassCoefficients()
+{
+    constexpr auto cutoffHz = 20.0f;
+    constexpr auto q = 0.70710678118f;
+
+    const auto w0 = juce::MathConstants<float>::twoPi * cutoffHz
+                    / static_cast<float> (currentSampleRate);
+    const auto cosW0 = std::cos (w0);
+    const auto sinW0 = std::sin (w0);
+    const auto alpha = sinW0 / (2.0f * q);
+    const auto a0 = 1.0f + alpha;
+
+    dcHighpassCoeffs.b0 = (1.0f + cosW0) / (2.0f * a0);
+    dcHighpassCoeffs.b1 = -(1.0f + cosW0) / a0;
+    dcHighpassCoeffs.b2 = (1.0f + cosW0) / (2.0f * a0);
+    dcHighpassCoeffs.a1 = (-2.0f * cosW0) / a0;
+    dcHighpassCoeffs.a2 = (1.0f - alpha) / a0;
+}
+
+void NafTachyonAudioProcessor::resetDcHighpassState()
+{
+    dcHighpassZ1[0] = dcHighpassZ1[1] = 0.0f;
+    dcHighpassZ2[0] = dcHighpassZ2[1] = 0.0f;
+}
+
+void NafTachyonAudioProcessor::applyDcHighpass (juce::AudioBuffer<float>& buffer)
+{
+    const auto numChannels = juce::jmin (buffer.getNumChannels(), 2);
+    const auto numSamples = buffer.getNumSamples();
+
+    for (int channel = 0; channel < numChannels; ++channel)
+    {
+        auto* samples = buffer.getWritePointer (channel);
+        auto z1 = dcHighpassZ1[channel];
+        auto z2 = dcHighpassZ2[channel];
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const auto input = samples[i];
+            const auto output = dcHighpassCoeffs.b0 * input + z1;
+            z1 = dcHighpassCoeffs.b1 * input - dcHighpassCoeffs.a1 * output + z2;
+            z2 = dcHighpassCoeffs.b2 * input - dcHighpassCoeffs.a2 * output;
+            samples[i] = output;
+        }
+
+        dcHighpassZ1[channel] = z1;
+        dcHighpassZ2[channel] = z2;
+    }
 }
 
 void NafTachyonAudioProcessor::resetVoiceFilter (OscillatorVoice& voice)
@@ -850,6 +903,8 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             buffer.setSample (0, sample, outputSample);
         }
     }
+
+    applyDcHighpass (buffer);
 
     globalSampleCounter += numSamples;
 }

@@ -232,6 +232,10 @@ private:
 
     float filterSample (float input, OscillatorVoice& voice, const FilterCoefficients& coeffs, FilterSlope slope) const;
 
+    void updateDcHighpassCoefficients();
+    void resetDcHighpassState();
+    void applyDcHighpass (juce::AudioBuffer<float>& buffer);
+
 
 
     OscillatorVoice voices[maxVoices];
@@ -251,6 +255,10 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> pitchBendSmoother;
 
     double vibratoLfoPhase = 0.0;
+
+    FilterCoefficients dcHighpassCoeffs;
+    float dcHighpassZ1[2] {};
+    float dcHighpassZ2[2] {};
 
     juce::AudioProcessorValueTreeState apvts;
 
