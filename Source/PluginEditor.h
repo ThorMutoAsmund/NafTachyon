@@ -94,7 +94,7 @@ private:
 
     SectionPanel filterGroup { "FILTER" };
 
-    SectionPanel unisonGroup { "UNISON" };
+    SectionPanel unisonGroup { "DETUNE" };
 
 
 

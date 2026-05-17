@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="ymHseu" name="Nafai's Tachyon" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" companyName="TMA Research"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.1.0" companyName="TMA Research"
               companyCopyright="Thor Muto Asmund (2026)" companyEmail="thorasmund@gmail.com"
               pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn"
               pluginManufacturerCode="NYEF" pluginCode="Tach">

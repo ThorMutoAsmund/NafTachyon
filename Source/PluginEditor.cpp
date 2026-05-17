@@ -163,7 +163,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureFilterSlopeControl (filterGroup);
 
-    configureKnob (unisonGroup, unisonSlider, unisonLabel, "Unison");
+    configureKnob (unisonGroup, unisonSlider, unisonLabel, "Detune");
 
 
 

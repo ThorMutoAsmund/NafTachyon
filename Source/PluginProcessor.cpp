@@ -164,7 +164,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { unisonParamId, 1 },
-        "Unison",
+        "Detune",
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
         0.0f,
         juce::AudioParameterFloatAttributes()
@@ -351,7 +351,8 @@ NafTachyonAudioProcessor::FilterCoefficients NafTachyonAudioProcessor::makeFilte
     if (slope == FilterSlope::sixDb)
         return coeffs;
 
-    const auto q = juce::jmap (resonance, 0.5f, 12.0f);
+    const auto resonanceShaped = resonance * resonance * resonance;
+    const auto q = juce::jmap (resonanceShaped, 0.5f, 12.0f);
     const auto w0 = juce::MathConstants<float>::twoPi * frequency / static_cast<float> (currentSampleRate);
     const auto cosW0 = std::cos (w0);
     const auto sinW0 = std::sin (w0);
