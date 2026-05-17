@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="ymHseu" name="Nafai's Tachyon" projectType="audioplug" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" companyName="TMA Research"
+              companyCopyright="Thor Muto Asmund (2026)" companyEmail="thorasmund@gmail.com"
+              pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn"
+              pluginManufacturerCode="NYEF" pluginCode="Tach">
+  <MAINGROUP id="SETMqy" name="Nafai's Tachyon">
+    <GROUP id="{C91FD211-482B-F223-E406-2E32B1F4C099}" name="Source">
+      <FILE id="FgO36V" name="PluginProcessor.cpp" compile="1" resource="0"
+            file="Source/PluginProcessor.cpp"/>
+      <FILE id="cVX7nC" name="PluginProcessor.h" compile="0" resource="0"
+            file="Source/PluginProcessor.h"/>
+      <FILE id="l3F32y" name="PluginEditor.cpp" compile="1" resource="0"
+            file="Source/PluginEditor.cpp"/>
+      <FILE id="eMRqah" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+      <FILE id="ntLfH1" name="NafTachyonLookAndFeel.cpp" compile="1" resource="0"
+            file="Source/NafTachyonLookAndFeel.cpp"/>
+      <FILE id="ntLfH2" name="NafTachyonLookAndFeel.h" compile="0" resource="0"
+            file="Source/NafTachyonLookAndFeel.h"/>
+      <FILE id="secPn1" name="SectionPanel.cpp" compile="1" resource="0"
+            file="Source/SectionPanel.cpp"/>
+      <FILE id="secPn2" name="SectionPanel.h" compile="0" resource="0"
+            file="Source/SectionPanel.h"/>
+      <FILE id="wvSyn1" name="WaveformSynth.cpp" compile="1" resource="0"
+            file="Source/WaveformSynth.cpp"/>
+      <FILE id="wvSyn2" name="WaveformSynth.h" compile="0" resource="0"
+            file="Source/WaveformSynth.h"/>
+      <FILE id="wvPrv1" name="WaveformPreview.cpp" compile="1" resource="0"
+            file="Source/WaveformPreview.cpp"/>
+      <FILE id="wvPrv2" name="WaveformPreview.h" compile="0" resource="0"
+            file="Source/WaveformPreview.h"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="1"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"/>
+  <EXPORTFORMATS>
+    <VS2022 targetFolder="Builds/VisualStudio2022">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="Nafai's Tachyon" enablePluginBinaryCopyStep="1"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="Nafai's Tachyon"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="../../../../Users/thora/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="../../../../Users/thora/JUCE/modules"/>
+      </MODULEPATHS>
+    </VS2022>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
