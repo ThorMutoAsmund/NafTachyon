@@ -9,8 +9,10 @@ namespace
     /** Fixed graph timeline (matches mod point time parameter max). */
     constexpr float graphTimeMaxSeconds = 10.0f;
     constexpr int toolbarHeight = 26;
-    constexpr int editingRowHeight = 18;
+    constexpr int toolbarBottomGap = 10;
     constexpr int timeAxisHeight = 16;
+    constexpr int laneStripWidth = 82;
+    constexpr int numLaneStripRows = 6;
 
     /** Logarithmic display: proportion = log(1 + t) / log(1 + max). t = 0 stays at the left edge. */
     float timeToDisplayProportion (float timeSeconds)
@@ -35,10 +37,9 @@ namespace
         ModulationEnvelope::Lane::overtones,
     };
 
-    ModulationEnvelope::Lane laneFromSelectorId (int selectedId)
+    ModulationEnvelope::Lane laneForStripRow (int rowIndex)
     {
-        const auto index = selectedId - 1;
-        return laneSelectorOrder[juce::jlimit (0, 5, index)];
+        return laneSelectorOrder[juce::jlimit (0, numLaneStripRows - 1, rowIndex)];
     }
 }
 
@@ -51,25 +52,6 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
     enabledToggle.setWantsKeyboardFocus (false);
     enabledToggle.setMouseClickGrabsKeyboardFocus (false);
     addAndMakeVisible (enabledToggle);
-
-    laneSelector.addItem ("Amplitude", 1);
-    laneSelector.addItem ("Cutoff",    2);
-    laneSelector.addItem ("Resonance", 3);
-    laneSelector.addItem ("Shape",     4);
-    laneSelector.addItem ("Width",     5);
-    laneSelector.addItem ("Harmonics", 6);
-    laneSelector.setSelectedId (1, juce::dontSendNotification);
-    laneSelector.onChange = [this]
-    {
-        activeLane = laneFromSelectorId (laneSelector.getSelectedId());
-        updateEditingLabel();
-        updateEnabledAttachment();
-        refreshEnvelopeFromApvts();
-        repaint();
-    };
-    laneSelector.setWantsKeyboardFocus (false);
-    laneSelector.setMouseClickGrabsKeyboardFocus (false);
-    addAndMakeVisible (laneSelector);
 
     addPointButton.onClick = [this]
     {
@@ -116,11 +98,6 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
     pointCountLabel.setFont (juce::FontOptions (11.0f));
     addAndMakeVisible (pointCountLabel);
 
-    editingLabel.setJustificationType (juce::Justification::centredLeft);
-    editingLabel.setColour (juce::Label::textColourId, juce::Colour (0xffc8d0d6));
-    editingLabel.setFont (juce::FontOptions (11.0f));
-    addAndMakeVisible (editingLabel);
-    updateEditingLabel();
     updateEnabledAttachment();
 
     ModEnvelopeParamIds::syncAllFirstPointsFromKnobs (apvts);
@@ -133,6 +110,12 @@ ModEnvelopeEditor::~ModEnvelopeEditor()
 {
     for (const auto& id : { "waveform", "pulseWidth", "overtones", "filterCutoff", "filterResonance", "amplitude" })
         apvts.removeParameterListener (id, this);
+
+    for (int laneIndex = 0; laneIndex < ModulationEnvelope::numLanes; ++laneIndex)
+    {
+        const auto lane = static_cast<Lane> (laneIndex);
+        apvts.removeParameterListener (ModEnvelopeParamIds::laneEnabled (lane), this);
+    }
 }
 
 bool ModEnvelopeEditor::isMainKnobParameter (const juce::String& parameterID)
@@ -149,11 +132,24 @@ void ModEnvelopeEditor::attachKnobListeners()
 {
     for (const auto& id : { "waveform", "pulseWidth", "overtones", "filterCutoff", "filterResonance", "amplitude" })
         apvts.addParameterListener (id, this);
+
+    for (int laneIndex = 0; laneIndex < ModulationEnvelope::numLanes; ++laneIndex)
+    {
+        const auto lane = static_cast<Lane> (laneIndex);
+        apvts.addParameterListener (ModEnvelopeParamIds::laneEnabled (lane), this);
+    }
 }
 
 void ModEnvelopeEditor::parameterChanged (const juce::String& parameterID, float newValue)
 {
     juce::ignoreUnused (newValue);
+
+    if (parameterID.contains ("Enabled"))
+    {
+        refreshEnvelopeFromApvts();
+        repaint();
+        return;
+    }
 
     if (! isMainKnobParameter (parameterID))
         return;
@@ -170,9 +166,15 @@ void ModEnvelopeEditor::updateEnabledAttachment()
         apvts, ModEnvelopeParamIds::laneEnabled (activeLane), enabledToggle);
 }
 
-void ModEnvelopeEditor::updateEditingLabel()
+void ModEnvelopeEditor::setActiveLane (Lane lane)
 {
-    editingLabel.setText ("Editing: " + laneLabel (activeLane), juce::dontSendNotification);
+    if (activeLane == lane)
+        return;
+
+    activeLane = lane;
+    updateEnabledAttachment();
+    refreshEnvelopeFromApvts();
+    repaint();
 }
 
 void ModEnvelopeEditor::timerCallback()
@@ -196,19 +198,95 @@ void ModEnvelopeEditor::resized()
 
     auto toolbar = area.removeFromTop (toolbarHeight);
     enabledToggle.setBounds (toolbar.removeFromLeft (44));
-    toolbar.removeFromLeft (6);
-    laneSelector.setBounds (toolbar.removeFromLeft (108));
-    toolbar.removeFromLeft (6);
+    toolbar.removeFromLeft (8);
     addPointButton.setBounds (toolbar.removeFromLeft (26));
     toolbar.removeFromLeft (4);
     removePointButton.setBounds (toolbar.removeFromLeft (26));
     toolbar.removeFromLeft (8);
     pointCountLabel.setBounds (toolbar);
 
-    editingLabel.setBounds (area.removeFromTop (editingRowHeight));
+    area.removeFromTop (toolbarBottomGap);
 
     area.removeFromBottom (timeAxisHeight);
-    graphBounds = area.toFloat().reduced (2.0f);
+
+    auto graphArea = area;
+    auto stripArea = graphArea.removeFromLeft (laneStripWidth);
+    graphArea.removeFromLeft (4);
+
+    laneStripBounds = stripArea.toFloat();
+    graphBounds = graphArea.toFloat().reduced (2.0f);
+}
+
+juce::Rectangle<float> ModEnvelopeEditor::getLaneRowBounds (int rowIndex) const
+{
+    const auto gap = 2.0f;
+    const auto rowHeight = (laneStripBounds.getHeight() - gap * static_cast<float> (numLaneStripRows + 1))
+                         / static_cast<float> (numLaneStripRows);
+
+    return { laneStripBounds.getX() + gap,
+             laneStripBounds.getY() + gap + static_cast<float> (rowIndex) * (rowHeight + gap),
+             laneStripBounds.getWidth() - 2.0f * gap,
+             rowHeight };
+}
+
+int ModEnvelopeEditor::hitTestLaneStripRow (juce::Point<float> pos) const
+{
+    if (! laneStripBounds.contains (pos))
+        return -1;
+
+    for (int row = 0; row < numLaneStripRows; ++row)
+        if (getLaneRowBounds (row).contains (pos))
+            return row;
+
+    return -1;
+}
+
+void ModEnvelopeEditor::paintLaneStrip (juce::Graphics& g)
+{
+    g.setColour (juce::Colour (0xff1a2024));
+    g.fillRoundedRectangle (laneStripBounds, 4.0f);
+    g.setColour (juce::Colour (0xff323a40));
+    g.drawRoundedRectangle (laneStripBounds, 4.0f, 1.0f);
+
+    for (int row = 0; row < numLaneStripRows; ++row)
+    {
+        const auto lane = laneForStripRow (row);
+        auto rowBounds = getLaneRowBounds (row);
+        const auto isActive = lane == activeLane;
+        const auto isEnabled = envelope.isLaneEnabled (lane, apvts);
+
+        g.setColour (isActive ? juce::Colour (0xff2e383e) : juce::Colour (0xff222a2e));
+        g.fillRoundedRectangle (rowBounds, 3.0f);
+
+        if (isActive)
+        {
+            g.setColour (laneColour (lane).withAlpha (0.35f));
+            g.drawRoundedRectangle (rowBounds, 3.0f, 1.0f);
+        }
+
+        const auto colourBar = rowBounds.removeFromLeft (5.0f).reduced (0.0f, 5.0f);
+        g.setColour (laneColour (lane).withAlpha (isEnabled ? 1.0f : 0.35f));
+        g.fillRoundedRectangle (colourBar, 2.0f);
+
+        auto textArea = rowBounds.reduced (4.0f, 0.0f);
+        textArea.removeFromRight (10.0f);
+
+        g.setColour (isActive ? juce::Colour (0xffe8ecef) : juce::Colour (0xff9aa3ab));
+        g.setFont (juce::FontOptions (10.5f));
+        g.drawText (laneLabel (lane),
+                    textArea,
+                    juce::Justification::centredLeft,
+                    true);
+
+        if (isEnabled)
+        {
+            const auto dotSize = 5.0f;
+            const auto dotX = rowBounds.getRight() - dotSize - 3.0f;
+            const auto dotY = rowBounds.getCentreY() - dotSize * 0.5f;
+            g.setColour (laneColour (lane));
+            g.fillEllipse (dotX, dotY, dotSize, dotSize);
+        }
+    }
 }
 
 juce::Rectangle<float> ModEnvelopeEditor::getGraphBounds() const
@@ -449,6 +527,8 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
 {
     refreshEnvelopeFromApvts();
 
+    paintLaneStrip (g);
+
     const auto graph = getGraphBounds();
     const auto numPoints = envelope.getNumPoints (activeLane);
 
@@ -556,6 +636,14 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
 
 void ModEnvelopeEditor::mouseDown (const juce::MouseEvent& e)
 {
+    const auto laneRowHit = hitTestLaneStripRow (e.position);
+
+    if (laneRowHit >= 0)
+    {
+        setActiveLane (laneForStripRow (laneRowHit));
+        return;
+    }
+
     const auto pointHit = hitTestPoint (e.position);
 
     if (pointHit >= 0)
