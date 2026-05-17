@@ -226,7 +226,7 @@ private:
 
     void resetUnisonPhases (OscillatorVoice& voice);
 
-    void updateUnisonIncrements (OscillatorVoice& voice, float unison);
+    void updateUnisonIncrements (OscillatorVoice& voice, float unisonVoices, float unisonSpread);
 
     FilterCoefficients makeFilterCoefficients (float cutoffHz, float resonance, FilterSlope slope) const;
 

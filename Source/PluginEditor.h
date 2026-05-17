@@ -135,8 +135,10 @@ private:
     juce::Label filterSlopeLabel;
 
     juce::Slider unisonSlider;
+    juce::Slider unisonSpreadSlider;
 
     juce::Label unisonLabel;
+    juce::Label unisonSpreadLabel;
 
 
 
@@ -163,6 +165,7 @@ private:
     std::unique_ptr<ComboBoxAttachment> filterSlopeAttachment;
 
     std::unique_ptr<SliderAttachment> unisonAttachment;
+    std::unique_ptr<SliderAttachment> unisonSpreadAttachment;
 
 
 

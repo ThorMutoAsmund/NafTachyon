@@ -159,7 +159,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureFilterSlopeControl (filterGroup);
 
-    configureKnob (unisonGroup, unisonSlider, unisonLabel, "Detune");
+    configureKnob (unisonGroup, unisonSlider, unisonLabel, "Voices");
+    configureKnob (unisonGroup, unisonSpreadSlider, unisonSpreadLabel, "Amount");
 
 
 
@@ -183,7 +184,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     filterSlopeAttachment = std::make_unique<ComboBoxAttachment> (apvts, "filterSlope", filterSlopeCombo);
 
-    unisonAttachment      = std::make_unique<SliderAttachment> (apvts, "unison", unisonSlider);
+    unisonAttachment       = std::make_unique<SliderAttachment> (apvts, "unison", unisonSlider);
+    unisonSpreadAttachment = std::make_unique<SliderAttachment> (apvts, "unisonSpread", unisonSpreadSlider);
 
 
 
@@ -343,15 +345,19 @@ void NafTachyonAudioProcessorEditor::layoutMainControls (juce::Rectangle<int> ar
 
 int NafTachyonAudioProcessorEditor::unisonPanelWidthForDialSize (int dialSize) const
 {
-    return juce::jmax (120, dialSize + 52);
+    return juce::jmax (200, dialSize * 2 + 60);
 }
 
 void NafTachyonAudioProcessorEditor::layoutUnisonControls (juce::Rectangle<int> area, int dialSize)
 {
-    auto labelRow = area.removeFromTop (labelRowHeight);
-    unisonLabel.setBounds (labelRow);
+    const int columnWidth = area.getWidth() / 2;
 
-    layoutCentredDial (unisonSlider, area, dialSize);
+    auto labelRow = area.removeFromTop (labelRowHeight);
+    unisonLabel.setBounds (labelRow.removeFromLeft (columnWidth));
+    unisonSpreadLabel.setBounds (labelRow);
+
+    layoutCentredDial (unisonSlider, area.removeFromLeft (columnWidth), dialSize);
+    layoutCentredDial (unisonSpreadSlider, area, dialSize);
 }
 
 void NafTachyonAudioProcessorEditor::layoutFilterControls (juce::Rectangle<int> area, int dialSize)

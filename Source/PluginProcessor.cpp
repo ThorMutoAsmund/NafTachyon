@@ -21,7 +21,8 @@ namespace
     constexpr auto filterSlopeParamId   = "filterSlope";
     constexpr auto overtonesParamId     = "overtones";
     constexpr auto pulseWidthParamId  = "pulseWidth";
-    constexpr auto unisonParamId      = "unison";
+    constexpr auto unisonParamId        = "unison";
+    constexpr auto unisonSpreadParamId  = "unisonSpread";
 
     constexpr int unisonStackSize = 5;
 
@@ -32,16 +33,32 @@ namespace
         float detuneCents[unisonStackSize] {};
     };
 
-    UnisonSettings calcUnisonSettings (float unison)
+    constexpr float unisonOffThreshold = 0.02f;
+
+    int unisonVoicesToCount (float unisonVoices)
+    {
+        unisonVoices = juce::jlimit (0.0f, 1.0f, unisonVoices);
+
+        if (unisonVoices < unisonOffThreshold)
+            return 1;
+
+        const auto t = (unisonVoices - unisonOffThreshold) / (1.0f - unisonOffThreshold);
+        const auto step = juce::jmin (3, static_cast<int> (std::floor (t * 4.0f)));
+        return 2 + step;
+    }
+
+    UnisonSettings calcUnisonSettings (float unisonVoices, float unisonSpread)
     {
         UnisonSettings settings;
-        unison = juce::jlimit (0.0f, 1.0f, unison);
+        unisonVoices = juce::jlimit (0.0f, 1.0f, unisonVoices);
+        unisonSpread = juce::jlimit (0.0f, 1.0f, unisonSpread);
 
-        if (unison < 0.001f)
+        settings.count = unisonVoicesToCount (unisonVoices);
+
+        if (settings.count <= 1)
             return settings;
 
-        settings.count = 1 + static_cast<int> (std::round (unison * static_cast<float> (unisonStackSize - 1)));
-        const auto spreadCents = unison * 40.0f;
+        const auto spreadCents = unisonSpread * 40.0f;
 
         for (int i = 0; i < settings.count; ++i)
         {
@@ -198,17 +215,34 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { unisonParamId, 1 },
-        "Detune",
+        "Voices",
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
         0.0f,
         juce::AudioParameterFloatAttributes()
             .withStringFromValueFunction ([] (float value, int)
             {
+                const auto voices = unisonVoicesToCount (value);
+
+                if (voices <= 1)
+                    return juce::String ("Off");
+
+                return juce::String (voices) + " voices";
+            })));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { unisonSpreadParamId, 1 },
+        "Amount",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
+        0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                juce::ignoreUnused (value);
+
                 if (value < 0.01f)
                     return juce::String ("Off");
 
-                const auto voices = 1 + static_cast<int> (std::round (value * static_cast<float> (unisonStackSize - 1)));
-                return juce::String (voices) + " voices";
+                return juce::String (juce::roundToInt (value * 40.0f)) + " ct";
             })));
 
     ModEnvelopeParamIds::addParameters (layout);
@@ -362,9 +396,11 @@ void NafTachyonAudioProcessor::resetUnisonPhases (OscillatorVoice& voice)
     }
 }
 
-void NafTachyonAudioProcessor::updateUnisonIncrements (OscillatorVoice& voice, float unison)
+void NafTachyonAudioProcessor::updateUnisonIncrements (OscillatorVoice& voice,
+                                                       float unisonVoices,
+                                                       float unisonSpread)
 {
-    const auto settings = calcUnisonSettings (unison);
+    const auto settings = calcUnisonSettings (unisonVoices, unisonSpread);
     const auto baseIncrement = voice.phaseIncrement;
 
     for (int i = 0; i < maxUnisonStack; ++i)
@@ -475,7 +511,9 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
             resetUnisonPhases (voice);
             voice.noteOnSample = globalSampleCounter;
             voice.modKnobSnapshot = knobSnapshot;
-            updateUnisonIncrements (voice, apvts.getRawParameterValue (unisonParamId)->load());
+            updateUnisonIncrements (voice,
+                                    apvts.getRawParameterValue (unisonParamId)->load(),
+                                    apvts.getRawParameterValue (unisonSpreadParamId)->load());
             resetVoiceFilter (voice);
             return;
         }
@@ -500,7 +538,9 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
             voice.phaseIncrement = juce::MathConstants<double>::twoPi * frequency / currentSampleRate;
             voice.subPhaseIncrement = voice.phaseIncrement * 0.5;
             voice.fifthPhaseIncrement = voice.phaseIncrement * WaveformSynth::perfectFifthRatio;
-            updateUnisonIncrements (voice, apvts.getRawParameterValue (unisonParamId)->load());
+            updateUnisonIncrements (voice,
+                                    apvts.getRawParameterValue (unisonParamId)->load(),
+                                    apvts.getRawParameterValue (unisonSpreadParamId)->load());
             resetVoiceFilter (voice);
             return;
         }
@@ -589,8 +629,9 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto overtonesKnob = apvts.getRawParameterValue (overtonesParamId)->load();
     const auto cutoffKnob = apvts.getRawParameterValue (filterCutoffParamId)->load();
     const auto resonanceKnob = apvts.getRawParameterValue (filterResonanceParamId)->load();
-    const auto unisonAmount = apvts.getRawParameterValue (unisonParamId)->load();
-    const auto unisonSettings = calcUnisonSettings (unisonAmount);
+    const auto unisonVoices = apvts.getRawParameterValue (unisonParamId)->load();
+    const auto unisonSpread = apvts.getRawParameterValue (unisonSpreadParamId)->load();
+    const auto unisonSettings = calcUnisonSettings (unisonVoices, unisonSpread);
 
     modulationEnvelope.updateFromApvts (apvts);
 
@@ -732,7 +773,7 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             if (! resonanceModEnabled)
                 resonance = filterResonanceSmoother.getNextValue();
 
-            updateUnisonIncrements (voice, unisonAmount);
+            updateUnisonIncrements (voice, unisonVoices, unisonSpread);
 
             float oscSample = 0.0f;
 
