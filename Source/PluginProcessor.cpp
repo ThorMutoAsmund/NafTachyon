@@ -110,7 +110,7 @@ namespace
         {
             const auto blend = (morph - waveformSegment) / waveformSegment;
             if (blend < 0.5f)
-                return "Triangle";
+                return "Tri";
             return "Tri/Saw";
         }
 
@@ -169,7 +169,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
         "Cutoff",
         juce::NormalisableRange<float> { 20.0f, 20000.0f, 0.0f, 0.3f },
         20000.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("Hz")));
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("Hz")
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (value, 2);
+            })));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { filterResonanceParamId, 1 },
