@@ -150,6 +150,8 @@
     <ClCompile Include="..\..\Source\SectionPanel.cpp"/>
     <ClCompile Include="..\..\Source\WaveformSynth.cpp"/>
     <ClCompile Include="..\..\Source\WaveformPreview.cpp"/>
+    <ClCompile Include="..\..\Source\ModulationEnvelope.cpp"/>
+    <ClCompile Include="..\..\Source\ModEnvelopeEditor.cpp"/>
     <ClCompile Include="..\..\..\..\..\..\Users\thora\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
       <ExcludedFromBuild>true</ExcludedFromBuild>
     </ClCompile>

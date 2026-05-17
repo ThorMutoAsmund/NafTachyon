@@ -30,6 +30,14 @@
             file="Source/WaveformPreview.cpp"/>
       <FILE id="wvPrv2" name="WaveformPreview.h" compile="0" resource="0"
             file="Source/WaveformPreview.h"/>
+      <FILE id="modEnv1" name="ModulationEnvelope.cpp" compile="1" resource="0"
+            file="Source/ModulationEnvelope.cpp"/>
+      <FILE id="modEnv2" name="ModulationEnvelope.h" compile="0" resource="0"
+            file="Source/ModulationEnvelope.h"/>
+      <FILE id="modEd1" name="ModEnvelopeEditor.cpp" compile="1" resource="0"
+            file="Source/ModEnvelopeEditor.cpp"/>
+      <FILE id="modEd2" name="ModEnvelopeEditor.h" compile="0" resource="0"
+            file="Source/ModEnvelopeEditor.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>

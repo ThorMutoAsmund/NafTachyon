@@ -697,6 +697,12 @@
     <ClCompile Include="..\..\Source\WaveformPreview.cpp">
       <Filter>Nafai's Tachyon\Source</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Source\ModulationEnvelope.cpp">
+      <Filter>Nafai's Tachyon\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\ModEnvelopeEditor.cpp">
+      <Filter>Nafai's Tachyon\Source</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\..\..\..\..\Users\thora\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
       <Filter>JUCE Modules\juce_audio_basics\audio_play_head</Filter>
     </ClCompile>

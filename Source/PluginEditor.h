@@ -26,6 +26,7 @@
 
 #include "SectionPanel.h"
 #include "WaveformPreview.h"
+#include "ModEnvelopeEditor.h"
 
 
 
@@ -85,6 +86,8 @@ private:
 
     SectionPanel waveformGroup { "WAVEFORM" };
 
+    SectionPanel evolveGroup { "EVOLVE" };
+
     SectionPanel filterGroup { "FILTER" };
 
 
@@ -108,6 +111,8 @@ private:
     juce::Label overtonesLabel;
 
     WaveformPreview waveformPreview;
+
+    ModEnvelopeEditor modEnvelopeEditor;
 
 
 

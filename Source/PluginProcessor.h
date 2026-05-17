@@ -20,6 +20,8 @@
 
 #include <JuceHeader.h>
 
+#include "ModulationEnvelope.h"
+
 
 
 //==============================================================================
@@ -170,6 +172,8 @@ private:
 
         double fifthPhaseIncrement = 0.0;
 
+        juce::int64 noteOnSample = 0;
+
         float level = 0.0f;
 
         float envelopeLevel = 0.0f;
@@ -187,6 +191,8 @@ private:
         float biquad2Z1 = 0.0f;
 
         float biquad2Z2 = 0.0f;
+
+        ModKnobSnapshot modKnobSnapshot;
 
     };
 
@@ -235,6 +241,10 @@ private:
     OscillatorVoice voices[maxVoices];
 
     double currentSampleRate = 44100.0;
+
+    juce::int64 globalSampleCounter = 0;
+
+    ModulationEnvelope modulationEnvelope;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> filterCutoffSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> filterResonanceSmoother;

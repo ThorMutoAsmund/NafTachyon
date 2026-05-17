@@ -9,6 +9,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "WaveformSynth.h"
+#include "ModulationEnvelope.h"
 
 namespace
 {
@@ -128,6 +129,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
         juce::StringArray { "6 dB", "12 dB", "24 dB" },
         0));
 
+    ModEnvelopeParamIds::addParameters (layout);
+
     return layout;
 }
 
@@ -220,6 +223,7 @@ void NafTachyonAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
 {
     juce::ignoreUnused (samplesPerBlock);
     currentSampleRate = sampleRate;
+    globalSampleCounter = 0;
     releaseAllVoices (0.0f);
 
     constexpr auto filterSmoothingSeconds = 0.03;
@@ -317,6 +321,8 @@ float NafTachyonAudioProcessor::filterSample (float input,
 
 void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
 {
+    const auto knobSnapshot = ModEnvelopeParamIds::readKnobSnapshot (apvts);
+
     for (auto& voice : voices)
     {
         if (voice.isActive && voice.midiNote == midiNote)
@@ -327,6 +333,8 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
             voice.phase = 0.0;
             voice.subPhase = 0.0;
             voice.fifthPhase = 0.0;
+            voice.noteOnSample = globalSampleCounter;
+            voice.modKnobSnapshot = knobSnapshot;
             resetVoiceFilter (voice);
             return;
         }
@@ -340,6 +348,8 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
 
             voice.isActive = true;
             voice.midiNote = midiNote;
+            voice.noteOnSample = globalSampleCounter;
+            voice.modKnobSnapshot = knobSnapshot;
             voice.phase = 0.0;
             voice.subPhase = 0.0;
             voice.fifthPhase = 0.0;
@@ -478,11 +488,34 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto decaySeconds   = apvts.getRawParameterValue (decayParamId)->load();
     const auto sustainLevel   = apvts.getRawParameterValue (sustainParamId)->load();
     const auto releaseSeconds = apvts.getRawParameterValue (releaseParamId)->load();
-    const auto waveformMorph    = apvts.getRawParameterValue (waveformParamId)->load();
-    filterCutoffSmoother.setTargetValue (apvts.getRawParameterValue (filterCutoffParamId)->load());
-    filterResonanceSmoother.setTargetValue (apvts.getRawParameterValue (filterResonanceParamId)->load());
-    overtonesSmoother.setTargetValue (apvts.getRawParameterValue (overtonesParamId)->load());
-    pulseWidthSmoother.setTargetValue (apvts.getRawParameterValue (pulseWidthParamId)->load());
+    const auto waveformMorphKnob = apvts.getRawParameterValue (waveformParamId)->load();
+    const auto pulseWidthKnob = apvts.getRawParameterValue (pulseWidthParamId)->load();
+    const auto overtonesKnob = apvts.getRawParameterValue (overtonesParamId)->load();
+    const auto cutoffKnob = apvts.getRawParameterValue (filterCutoffParamId)->load();
+    const auto resonanceKnob = apvts.getRawParameterValue (filterResonanceParamId)->load();
+
+    modulationEnvelope.updateFromApvts (apvts);
+
+    const auto shapeModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::shape, apvts);
+    const auto widthModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::width, apvts);
+    const auto overtonesModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::overtones, apvts);
+    const auto cutoffModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::cutoff, apvts);
+    const auto resonanceModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::resonance, apvts);
+
+    if (! widthModEnabled)
+        pulseWidthSmoother.setTargetValue (pulseWidthKnob);
+
+    if (! overtonesModEnabled)
+        overtonesSmoother.setTargetValue (overtonesKnob);
+
+    if (! cutoffModEnabled)
+        filterCutoffSmoother.setTargetValue (cutoffKnob);
+
+    if (! resonanceModEnabled)
+        filterResonanceSmoother.setTargetValue (resonanceKnob);
+
+    const auto anyLaneModEnabled = shapeModEnabled || widthModEnabled || overtonesModEnabled
+                               || cutoffModEnabled || resonanceModEnabled;
 
     const auto filterSlopeIndex = juce::jlimit (0, 2, static_cast<int> (std::round (apvts.getRawParameterValue (filterSlopeParamId)->load())));
     const auto filterSlope = static_cast<FilterSlope> (filterSlopeIndex);
@@ -521,8 +554,46 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
             advanceEnvelope (voice, attackDelta, decayDelta, sustainLevel);
 
-            const auto overtones = overtonesSmoother.getNextValue();
-            const auto pulseWidth = pulseWidthSmoother.getNextValue();
+            auto waveformMorph = waveformMorphKnob;
+            auto pulseWidth = pulseWidthKnob;
+            auto overtones = overtonesKnob;
+            auto cutoffHz = cutoffKnob;
+            auto resonance = resonanceKnob;
+
+            if (anyLaneModEnabled)
+            {
+                const auto elapsedSeconds = static_cast<float> (globalSampleCounter + sample - voice.noteOnSample)
+                                          / static_cast<float> (currentSampleRate);
+                const auto modParams = modulationEnvelope.evaluate (elapsedSeconds, voice.modKnobSnapshot);
+
+                if (shapeModEnabled)
+                    waveformMorph = modParams.shape;
+
+                if (widthModEnabled)
+                    pulseWidth = modParams.pulseWidth;
+
+                if (overtonesModEnabled)
+                    overtones = modParams.overtones;
+
+                if (cutoffModEnabled)
+                    cutoffHz = modParams.cutoffHz;
+
+                if (resonanceModEnabled)
+                    resonance = modParams.resonance;
+            }
+
+            if (! widthModEnabled)
+                pulseWidth = pulseWidthSmoother.getNextValue();
+
+            if (! overtonesModEnabled)
+                overtones = overtonesSmoother.getNextValue();
+
+            if (! cutoffModEnabled)
+                cutoffHz = filterCutoffSmoother.getNextValue();
+
+            if (! resonanceModEnabled)
+                resonance = filterResonanceSmoother.getNextValue();
+
             const auto oscSample = WaveformSynth::computeOscillatorSample (voice.phase,
                                                                            voice.subPhase,
                                                                            voice.fifthPhase,
@@ -533,9 +604,7 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                                  * voice.envelopeLevel
                                  * voiceGain;
 
-            const auto filterCoeffs = makeFilterCoefficients (filterCutoffSmoother.getNextValue(),
-                                                              filterResonanceSmoother.getNextValue(),
-                                                              filterSlope);
+            const auto filterCoeffs = makeFilterCoefficients (cutoffHz, resonance, filterSlope);
 
             outputSample += filterSample (oscSample, voice, filterCoeffs, filterSlope);
 
@@ -550,6 +619,8 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         for (int channel = 0; channel < numOutputChannels; ++channel)
             buffer.setSample (channel, sample, outputSample);
     }
+
+    globalSampleCounter += numSamples;
 }
 
 //==============================================================================

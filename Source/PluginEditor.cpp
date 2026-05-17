@@ -50,6 +50,10 @@ namespace
 
     constexpr int waveformPanelHeight = 160;
 
+    constexpr int evolvePanelHeight = 196;
+
+    constexpr int sectionGap = 6;
+
     constexpr int minWaveformPreviewWidth = 108;
 
 
@@ -110,7 +114,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     : AudioProcessorEditor (&p),
       audioProcessor (p),
-      waveformPreview (p.getApvts())
+      waveformPreview (p.getApvts()),
+      modEnvelopeEditor (p.getApvts())
 
 {
 
@@ -121,6 +126,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
     addAndMakeVisible (adsrGroup);
 
     addAndMakeVisible (waveformGroup);
+
+    addAndMakeVisible (evolveGroup);
 
     addAndMakeVisible (filterGroup);
 
@@ -143,6 +150,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
     configureKnob (waveformGroup, overtonesSlider, overtonesLabel, "Overtones");
 
     waveformGroup.addAndMakeVisible (waveformPreview);
+
+    evolveGroup.addAndMakeVisible (modEnvelopeEditor);
 
 
 
@@ -184,9 +193,11 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     setComponentIgnoresKeyboard (*this);
 
+    setComponentIgnoresKeyboard (modEnvelopeEditor);
 
 
-    setSize (580, 600);
+
+    setSize (580, 740);
 
 }
 
@@ -432,16 +443,6 @@ void NafTachyonAudioProcessorEditor::paint (juce::Graphics& g)
 
     g.fillAll (NafTachyonLookAndFeel::getPluginBackgroundColour());
 
-
-
-    g.setColour (juce::Colour (0xffd8dee3).withAlpha (0.9f));
-
-    g.setFont (juce::FontOptions (18.0f));
-
-    g.drawFittedText ("Nafai's Tachyon", getLocalBounds().removeFromTop (36),
-
-                      juce::Justification::centred, 1);
-
 }
 
 
@@ -450,29 +451,43 @@ void NafTachyonAudioProcessorEditor::resized()
 
 {
 
+    auto layoutArea = getLocalBounds().reduced (20);
+
+    {
+
+        auto measureArea = layoutArea;
+
+        const auto waveformArea = measureArea.removeFromBottom (waveformPanelHeight);
+
+        waveformGroup.setBounds (waveformArea);
+
+        const auto waveformContent = waveformGroup.getContentBounds();
+
+        const auto previewWidth = waveformPreviewWidthForArea (waveformContent.getWidth());
+
+        uniformDialSize = computeUniformDialSize (waveformContent, previewWidth);
+
+    }
+
+
+
     auto area = getLocalBounds().reduced (20);
-
-    area.removeFromTop (40);
-
-
-
-    auto waveformArea = area.removeFromBottom (waveformPanelHeight);
-
-    waveformGroup.setBounds (waveformArea);
-
-    const auto waveformContent = waveformGroup.getContentBounds();
-
-    const auto previewWidth = waveformPreviewWidthForArea (waveformContent.getWidth());
-
-    uniformDialSize = computeUniformDialSize (waveformContent, previewWidth);
 
     const auto sectionPanelHeight = panelHeightForDialSize (uniformDialSize);
 
+    const auto evolveArea = area.removeFromBottom (evolvePanelHeight);
 
+    area.removeFromBottom (sectionGap);
 
-    auto filterArea = area.removeFromBottom (sectionPanelHeight);
+    const auto filterArea = area.removeFromBottom (sectionPanelHeight);
 
-    auto adsrArea = area;
+    area.removeFromBottom (sectionGap);
+
+    const auto waveformArea = area.removeFromBottom (waveformPanelHeight);
+
+    area.removeFromBottom (sectionGap);
+
+    const auto adsrArea = area;
 
 
 
@@ -482,13 +497,23 @@ void NafTachyonAudioProcessorEditor::resized()
 
 
 
-    layoutWaveformControls (waveformContent, uniformDialSize, previewWidth);
+    waveformGroup.setBounds (waveformArea);
+
+    layoutWaveformControls (waveformGroup.getContentBounds(), uniformDialSize,
+
+                            waveformPreviewWidthForArea (waveformGroup.getContentBounds().getWidth()));
 
 
 
     filterGroup.setBounds (filterArea);
 
     layoutFilterControls (filterGroup.getContentBounds(), uniformDialSize);
+
+
+
+    evolveGroup.setBounds (evolveArea);
+
+    modEnvelopeEditor.setBounds (evolveGroup.getContentBounds());
 
 }
 
