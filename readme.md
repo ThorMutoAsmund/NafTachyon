@@ -17,7 +17,7 @@
 - Log time in evolve lanes
 - Add release time dial
 
-#V1.0.0
+# V1.0.0
 - ADSR
 - Waveform morph
 - Harmonics
@@ -30,17 +30,17 @@
 
 
 # Future ideas
-- En "evolve ---> cutoff modulation amount" knap evt. Eller en stor knap
-- Der er et problem n�r man optager automation: Den opretter kurver for mange parametre p� en gang. Den skal kun oprette �n for den parameter man justerer. 
-- Det kan ogs� v�re rart at kunne sende velocity til cutoff i stedet for bare volume.
+- An "evolve ---> cutoff modulation amount" button or one big cutoff button
+- Problem when recording automation: (Den opretter kurver for mange parametre på en gang. Den skal kun oprette een for den parameter man justerer. )
+- Velocity to cutoff
 
 
 
 
-class BetterSlider : public Slider
-{
-    this->onDragStart = [&]
-    {
-        this->setMouseDragSensitivity(ModifierKeys::currentModifiers.isCtrlDown() ? 2500 : 250);
-    };
-}
+> class BetterSlider : public Slider
+> {
+>     this->onDragStart = [&]
+>     {
+>         this->setMouseDragSensitivity(ModifierKeys::currentModifiers.isCtrlDown() ? 2500 : 250);
+>     };
+> }
