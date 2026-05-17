@@ -123,7 +123,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
 
 
-    addAndMakeVisible (adsrGroup);
+    addAndMakeVisible (mainGroup);
 
     addAndMakeVisible (waveformGroup);
 
@@ -135,13 +135,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
 
 
-    configureKnob (adsrGroup, attackSlider,  attackLabel,  "Attack");
-
-    configureKnob (adsrGroup, decaySlider,   decayLabel,   "Decay");
-
-    configureKnob (adsrGroup, sustainSlider, sustainLabel, "Sustain");
-
-    configureKnob (adsrGroup, releaseSlider, releaseLabel, "Release");
+    configureKnob (mainGroup, amplitudeSlider, amplitudeLabel, "Amplitude");
 
 
 
@@ -171,13 +165,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
 
 
-    attackAttachment     = std::make_unique<SliderAttachment> (apvts, "attack",          attackSlider);
-
-    decayAttachment      = std::make_unique<SliderAttachment> (apvts, "decay",           decaySlider);
-
-    sustainAttachment    = std::make_unique<SliderAttachment> (apvts, "sustain",         sustainSlider);
-
-    releaseAttachment    = std::make_unique<SliderAttachment> (apvts, "release",         releaseSlider);
+    amplitudeAttachment  = std::make_unique<SliderAttachment> (apvts, "amplitude",       amplitudeSlider);
 
     waveformAttachment   = std::make_unique<SliderAttachment> (apvts, "waveform",        waveformSlider);
 
@@ -329,33 +317,15 @@ void NafTachyonAudioProcessorEditor::configureKnob (juce::Component& parent,
 
 
 
-void NafTachyonAudioProcessorEditor::layoutAdsrKnobs (juce::Rectangle<int> area, int dialSize)
+void NafTachyonAudioProcessorEditor::layoutMainControls (juce::Rectangle<int> area, int dialSize)
 
 {
 
-    const int columnWidth = area.getWidth() / 4;
-
-
-
     auto labelRow = area.removeFromTop (labelRowHeight);
 
-    attackLabel.setBounds  (labelRow.removeFromLeft (columnWidth));
+    amplitudeLabel.setBounds (labelRow);
 
-    decayLabel.setBounds   (labelRow.removeFromLeft (columnWidth));
-
-    sustainLabel.setBounds (labelRow.removeFromLeft (columnWidth));
-
-    releaseLabel.setBounds (labelRow);
-
-
-
-    layoutCentredDial (attackSlider,  area.removeFromLeft (columnWidth), dialSize);
-
-    layoutCentredDial (decaySlider,   area.removeFromLeft (columnWidth), dialSize);
-
-    layoutCentredDial (sustainSlider, area.removeFromLeft (columnWidth), dialSize);
-
-    layoutCentredDial (releaseSlider, area, dialSize);
+    layoutCentredDial (amplitudeSlider, area, dialSize);
 
 }
 
@@ -512,13 +482,13 @@ void NafTachyonAudioProcessorEditor::resized()
 
     area.removeFromBottom (sectionGap);
 
-    const auto adsrArea = area;
+    const auto mainArea = area;
 
 
 
-    adsrGroup.setBounds (adsrArea);
+    mainGroup.setBounds (mainArea);
 
-    layoutAdsrKnobs (adsrGroup.getContentBounds(), uniformDialSize);
+    layoutMainControls (mainGroup.getContentBounds(), uniformDialSize);
 
 
 

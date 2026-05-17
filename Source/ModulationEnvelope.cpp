@@ -23,6 +23,7 @@ namespace
         { "modOvertones", 0.0f,      0.0f,      1.0f,      0.0f,  false },
         { "modCutoff",    20000.0f, 20.0f,  20000.0f,      0.3f,  true  },
         { "modResonance", 0.0f,      0.0f,      1.0f,      0.0f,  false },
+        { "modAmplitude", 1.0f,      0.0f,      1.0f,      0.0f,  false },
     };
 
     ModulationEnvelope::Lane laneFromIndex (int index)
@@ -122,14 +123,15 @@ float ModulationEnvelope::applySegmentT (float t, float curve)
     if (std::abs (curve) < 0.001f)
         return t;
 
-    const auto exponent = 1.0f + std::abs (curve) * 4.0f;
+    // Exponential ramp: (e^(k*t) - 1) / (e^k - 1)  →  t when k → 0 (straight line at handle centre).
+    constexpr float kMax = 7.0f;
+    const auto k = -curve * kMax;
 
-    // Up (curve > 0): fast start, slow settle — ease-out
-    if (curve > 0.0f)
-        return 1.0f - std::pow (1.0f - t, exponent);
+    if (std::abs (k) < 1.0e-5f)
+        return t;
 
-    // Down (curve < 0): slow start, fast finish — ease-in
-    return std::pow (t, exponent);
+    const auto expK = std::exp (k);
+    return (std::exp (k * t) - 1.0f) / (expK - 1.0f);
 }
 
 float ModulationEnvelope::evaluateSegment (float valueA, float valueB, float t, float curve)
@@ -218,6 +220,7 @@ float ModKnobSnapshot::getValue (ModulationEnvelope::Lane lane) const
         case ModulationEnvelope::Lane::overtones: return overtones;
         case ModulationEnvelope::Lane::cutoff:    return cutoffHz;
         case ModulationEnvelope::Lane::resonance: return resonance;
+        case ModulationEnvelope::Lane::amplitude: return amplitude;
     }
 
     return 0.0f;
@@ -232,6 +235,7 @@ juce::String ModEnvelopeParamIds::knobParameterId (ModulationEnvelope::Lane lane
         case ModulationEnvelope::Lane::overtones: return "overtones";
         case ModulationEnvelope::Lane::cutoff:    return "filterCutoff";
         case ModulationEnvelope::Lane::resonance: return "filterResonance";
+        case ModulationEnvelope::Lane::amplitude: return "amplitude";
     }
 
     return {};
@@ -259,6 +263,7 @@ ModKnobSnapshot ModEnvelopeParamIds::readKnobSnapshot (juce::AudioProcessorValue
     snapshot.overtones = readKnobValue (ModulationEnvelope::Lane::overtones, apvts);
     snapshot.cutoffHz = readKnobValue (ModulationEnvelope::Lane::cutoff, apvts);
     snapshot.resonance = readKnobValue (ModulationEnvelope::Lane::resonance, apvts);
+    snapshot.amplitude = readKnobValue (ModulationEnvelope::Lane::amplitude, apvts);
     return snapshot;
 }
 
@@ -313,5 +318,6 @@ ModulatedParams ModulationEnvelope::evaluate (float elapsedSeconds, const ModKno
     result.overtones = interpolateLane (lanes[static_cast<size_t> (Lane::overtones)], elapsedSeconds, knobSnapshot.overtones);
     result.cutoffHz = interpolateLane (lanes[static_cast<size_t> (Lane::cutoff)], elapsedSeconds, knobSnapshot.cutoffHz);
     result.resonance = interpolateLane (lanes[static_cast<size_t> (Lane::resonance)], elapsedSeconds, knobSnapshot.resonance);
+    result.amplitude = interpolateLane (lanes[static_cast<size_t> (Lane::amplitude)], elapsedSeconds, knobSnapshot.amplitude);
     return result;
 }

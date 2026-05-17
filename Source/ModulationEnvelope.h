@@ -13,6 +13,7 @@ struct ModulatedParams
     float overtones = 0.0f;
     float cutoffHz = 20000.0f;
     float resonance = 0.0f;
+    float amplitude = 1.0f;
 };
 
 struct ModLanePoint
@@ -35,9 +36,9 @@ class ModulationEnvelope
 public:
     static constexpr int maxPoints = 6;
     static constexpr int maxSegments = maxPoints - 1;
-    static constexpr int numLanes = 5;
+    static constexpr int numLanes = 6;
 
-    /** Segment curve in [-1, 1]: 0 = linear, positive = slow start, negative = slow end. */
+    /** Segment curve in [-1, 1]: 0 = linear; nonzero = exponential bend (true exp, not power ease). */
     static float applySegmentT (float t, float curve);
 
     static float evaluateSegment (float valueA, float valueB, float t, float curve);
@@ -51,7 +52,8 @@ public:
         width,
         overtones,
         cutoff,
-        resonance
+        resonance,
+        amplitude
     };
 
     void updateFromApvts (juce::AudioProcessorValueTreeState& apvts);
@@ -83,6 +85,7 @@ struct ModKnobSnapshot
     float overtones = 0.0f;
     float cutoffHz = 20000.0f;
     float resonance = 0.0f;
+    float amplitude = 1.0f;
 
     float getValue (ModulationEnvelope::Lane lane) const;
 };

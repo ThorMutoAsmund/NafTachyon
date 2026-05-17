@@ -62,7 +62,7 @@ private:
 
     static void setComponentIgnoresKeyboard (juce::Component& component);
 
-    void layoutAdsrKnobs (juce::Rectangle<int> area, int dialSize);
+    void layoutMainControls (juce::Rectangle<int> area, int dialSize);
 
     void layoutFilterControls (juce::Rectangle<int> area, int dialSize);
 
@@ -86,7 +86,7 @@ private:
 
 
 
-    SectionPanel adsrGroup { "ADSR" };
+    SectionPanel mainGroup { "MAIN" };
 
     SectionPanel waveformGroup { "WAVE" };
 
@@ -98,9 +98,9 @@ private:
 
 
 
-    juce::Slider attackSlider, decaySlider, sustainSlider, releaseSlider;
+    juce::Slider amplitudeSlider;
 
-    juce::Label attackLabel, decayLabel, sustainLabel, releaseLabel;
+    juce::Label amplitudeLabel;
 
 
 
@@ -142,13 +142,7 @@ private:
 
 
 
-    std::unique_ptr<SliderAttachment> attackAttachment;
-
-    std::unique_ptr<SliderAttachment> decayAttachment;
-
-    std::unique_ptr<SliderAttachment> sustainAttachment;
-
-    std::unique_ptr<SliderAttachment> releaseAttachment;
+    std::unique_ptr<SliderAttachment> amplitudeAttachment;
 
     std::unique_ptr<SliderAttachment> waveformAttachment;
 

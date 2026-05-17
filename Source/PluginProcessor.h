@@ -120,24 +120,6 @@ public:
 
 private:
 
-    enum class EnvelopeStage
-
-    {
-
-        idle,
-
-        attack,
-
-        decay,
-
-        sustain,
-
-        release
-
-    };
-
-
-
     enum class FilterSlope
 
     {
@@ -183,12 +165,6 @@ private:
 
         float level = 0.0f;
 
-        float envelopeLevel = 0.0f;
-
-        float releaseIncrement = 0.0f;
-
-        EnvelopeStage stage = EnvelopeStage::idle;
-
         float onePoleState = 0.0f;
 
         float biquad1Z1 = 0.0f;
@@ -229,11 +205,9 @@ private:
 
     void startVoice (int midiNote, int velocity);
 
-    void releaseVoice (int midiNote, float releaseSeconds);
+    void releaseVoice (int midiNote);
 
-    void releaseAllVoices (float releaseSeconds);
-
-    void advanceEnvelope (OscillatorVoice& voice, float attackDelta, float decayDelta, float sustainLevel);
+    void releaseAllVoices();
 
     void resetVoiceFilter (OscillatorVoice& voice);
 
@@ -259,6 +233,7 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> filterResonanceSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> overtonesSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> pulseWidthSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> amplitudeSmoother;
 
     juce::AudioProcessorValueTreeState apvts;
 

@@ -28,6 +28,7 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
     laneSelector.addItem ("Harmonics", 3);
     laneSelector.addItem ("Cutoff",    4);
     laneSelector.addItem ("Resonance", 5);
+    laneSelector.addItem ("Amplitude", 6);
     laneSelector.setSelectedId (1, juce::dontSendNotification);
     laneSelector.onChange = [this]
     {
@@ -101,7 +102,7 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
 
 ModEnvelopeEditor::~ModEnvelopeEditor()
 {
-    for (const auto& id : { "waveform", "pulseWidth", "overtones", "filterCutoff", "filterResonance" })
+    for (const auto& id : { "waveform", "pulseWidth", "overtones", "filterCutoff", "filterResonance", "amplitude" })
         apvts.removeParameterListener (id, this);
 }
 
@@ -111,12 +112,13 @@ bool ModEnvelopeEditor::isMainKnobParameter (const juce::String& parameterID)
         || parameterID == "pulseWidth"
         || parameterID == "overtones"
         || parameterID == "filterCutoff"
-        || parameterID == "filterResonance";
+        || parameterID == "filterResonance"
+        || parameterID == "amplitude";
 }
 
 void ModEnvelopeEditor::attachKnobListeners()
 {
-    for (const auto& id : { "waveform", "pulseWidth", "overtones", "filterCutoff", "filterResonance" })
+    for (const auto& id : { "waveform", "pulseWidth", "overtones", "filterCutoff", "filterResonance", "amplitude" })
         apvts.addParameterListener (id, this);
 }
 
@@ -192,6 +194,7 @@ float ModEnvelopeEditor::laneToNormalized (Lane lane, float value) const
         case Lane::shape:
         case Lane::overtones:
         case Lane::resonance:
+        case Lane::amplitude:
             return juce::jlimit (0.0f, 1.0f, value);
         case Lane::width:
             return juce::jlimit (0.0f, 1.0f, (value + 1.0f) * 0.5f);
@@ -215,6 +218,7 @@ float ModEnvelopeEditor::normalizedToLane (Lane lane, float normalized) const
         case Lane::shape:
         case Lane::overtones:
         case Lane::resonance:
+        case Lane::amplitude:
             return normalized;
         case Lane::width:
             return normalized * 2.0f - 1.0f;
@@ -238,6 +242,7 @@ juce::String ModEnvelopeEditor::laneLabel (Lane lane) const
         case Lane::overtones: return "Harmonics";
         case Lane::cutoff:    return "Cutoff";
         case Lane::resonance: return "Resonance";
+        case Lane::amplitude: return "Amplitude";
     }
 
     return {};
@@ -252,6 +257,7 @@ juce::Colour ModEnvelopeEditor::laneColour (Lane lane) const
         case Lane::overtones: return juce::Colour (0xff9b7bff);
         case Lane::cutoff:    return juce::Colour (0xff5fd38d);
         case Lane::resonance: return juce::Colour (0xffff6b9d);
+        case Lane::amplitude: return juce::Colour (0xfff0d060);
     }
 
     return juce::Colours::white;
@@ -351,7 +357,7 @@ void ModEnvelopeEditor::buildLanePath (juce::Path& path, Lane lane, juce::Rectan
     if (numPoints < 1)
         return;
 
-    constexpr int stepsPerSegment = 24;
+    constexpr int stepsPerSegment = 40;
 
     const auto x0 = timeToXForLane (envelope.getPoint (lane, 0).timeSeconds, graph, lane);
     const auto y0 = valueToY (laneToNormalized (lane, getPointValue (lane, 0)), graph);
