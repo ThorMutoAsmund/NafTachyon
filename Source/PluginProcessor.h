@@ -247,6 +247,10 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> overtonesSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> pulseWidthSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> amplitudeSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> modWheelSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> pitchBendSmoother;
+
+    double vibratoLfoPhase = 0.0;
 
     juce::AudioProcessorValueTreeState apvts;
 

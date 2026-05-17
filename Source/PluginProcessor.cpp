@@ -73,6 +73,29 @@ namespace
             phase -= juce::MathConstants<double>::twoPi;
     }
 
+    constexpr float vibratoRateHz = 5.5f;
+    constexpr float maxVibratoCents = 50.0f;
+    /** Standard MIDI pitch-bend wheel range (±2 semitones). */
+    constexpr float pitchBendRangeSemitones = 2.0f;
+
+    double vibratoPitchRatio (double lfoPhase, float modWheelDepth)
+    {
+        const auto cents = std::sin (lfoPhase) * modWheelDepth * maxVibratoCents;
+        return std::pow (2.0, cents / 1200.0);
+    }
+
+    float normalisedPitchWheel (int pitchWheelValue)
+    {
+        return juce::jlimit (-1.0f,
+                             1.0f,
+                             static_cast<float> (pitchWheelValue - 8192) / 8192.0f);
+    }
+
+    double pitchBendRatio (float pitchWheelNormalised)
+    {
+        return std::pow (2.0, static_cast<double> (pitchWheelNormalised * pitchBendRangeSemitones) / 12.0);
+    }
+
     juce::String waveformMorphToString (float morph)
     {
         morph = juce::jlimit (0.0f, 1.0f, morph);
@@ -283,6 +306,9 @@ void NafTachyonAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     overtonesSmoother.reset (sampleRate, filterSmoothingSeconds);
     pulseWidthSmoother.reset (sampleRate, filterSmoothingSeconds);
     amplitudeSmoother.reset (sampleRate, filterSmoothingSeconds);
+    modWheelSmoother.reset (sampleRate, 0.05);
+    pitchBendSmoother.reset (sampleRate, 0.01);
+    pitchBendSmoother.setCurrentAndTargetValue (0.0f);
 
     if (auto* cutoff = apvts.getRawParameterValue (filterCutoffParamId))
         filterCutoffSmoother.setCurrentAndTargetValue (cutoff->load());
@@ -597,6 +623,13 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             releaseAllVoices (false);
         else if (message.isAllSoundOff())
             releaseAllVoices (true);
+        else if (message.isController())
+        {
+            if (message.getControllerNumber() == 1)
+                modWheelSmoother.setTargetValue (message.getControllerValue() / 127.0f);
+        }
+        else if (message.isPitchWheel())
+            pitchBendSmoother.setTargetValue (normalisedPitchWheel (message.getPitchWheelValue()));
     }
 
     const auto numSamples = buffer.getNumSamples();
@@ -605,6 +638,15 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        const auto modWheelDepth = modWheelSmoother.getNextValue();
+        const auto pitchWheelNormalised = pitchBendSmoother.getNextValue();
+        const auto pitchRatio = vibratoPitchRatio (vibratoLfoPhase, modWheelDepth)
+                              * pitchBendRatio (pitchWheelNormalised);
+
+        vibratoLfoPhase += juce::MathConstants<double>::twoPi * static_cast<double> (vibratoRateHz)
+                         / currentSampleRate;
+        wrapPhase (vibratoLfoPhase);
+
         float outputSample = 0.0f;
 
         for (auto& voice : voices)
@@ -682,14 +724,18 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
             float oscSample = 0.0f;
 
+            const auto mainPhaseInc = voice.phaseIncrement * pitchRatio;
+            const auto subPhaseInc = voice.subPhaseIncrement * pitchRatio;
+            const auto fifthPhaseInc = voice.fifthPhaseIncrement * pitchRatio;
+
             if (unisonSettings.count <= 1)
             {
                 oscSample = WaveformSynth::computeOscillatorSample (voice.phase,
-                                                                      voice.phaseIncrement,
+                                                                      mainPhaseInc,
                                                                       voice.subPhase,
-                                                                      voice.subPhaseIncrement,
+                                                                      subPhaseInc,
                                                                       voice.fifthPhase,
-                                                                      voice.fifthPhaseIncrement,
+                                                                      fifthPhaseInc,
                                                                       waveformMorph,
                                                                       pulseWidth,
                                                                       overtones);
@@ -699,11 +745,11 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 for (int u = 0; u < unisonSettings.count; ++u)
                 {
                     oscSample += WaveformSynth::computeOscillatorSample (voice.unisonPhase[u],
-                                                                         voice.unisonPhaseIncrement[u],
+                                                                         voice.unisonPhaseIncrement[u] * pitchRatio,
                                                                          voice.unisonSubPhase[u],
-                                                                         voice.unisonSubPhaseIncrement[u],
+                                                                         voice.unisonSubPhaseIncrement[u] * pitchRatio,
                                                                          voice.unisonFifthPhase[u],
-                                                                         voice.unisonFifthPhaseIncrement[u],
+                                                                         voice.unisonFifthPhaseIncrement[u] * pitchRatio,
                                                                          waveformMorph,
                                                                          pulseWidth,
                                                                          overtones);
@@ -720,9 +766,9 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
             if (unisonSettings.count <= 1)
             {
-                voice.phase += voice.phaseIncrement;
-                voice.subPhase += voice.subPhaseIncrement;
-                voice.fifthPhase += voice.fifthPhaseIncrement;
+                voice.phase += mainPhaseInc;
+                voice.subPhase += subPhaseInc;
+                voice.fifthPhase += fifthPhaseInc;
                 wrapPhase (voice.phase);
                 wrapPhase (voice.subPhase);
                 wrapPhase (voice.fifthPhase);
@@ -731,9 +777,9 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             {
                 for (int u = 0; u < unisonSettings.count; ++u)
                 {
-                    voice.unisonPhase[u] += voice.unisonPhaseIncrement[u];
-                    voice.unisonSubPhase[u] += voice.unisonSubPhaseIncrement[u];
-                    voice.unisonFifthPhase[u] += voice.unisonFifthPhaseIncrement[u];
+                    voice.unisonPhase[u] += voice.unisonPhaseIncrement[u] * pitchRatio;
+                    voice.unisonSubPhase[u] += voice.unisonSubPhaseIncrement[u] * pitchRatio;
+                    voice.unisonFifthPhase[u] += voice.unisonFifthPhaseIncrement[u] * pitchRatio;
                     wrapPhase (voice.unisonPhase[u]);
                     wrapPhase (voice.unisonSubPhase[u]);
                     wrapPhase (voice.unisonFifthPhase[u]);
