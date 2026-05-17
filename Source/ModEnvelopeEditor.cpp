@@ -11,6 +11,19 @@ namespace
     constexpr int toolbarHeight = 26;
     constexpr int editingRowHeight = 18;
     constexpr int timeAxisHeight = 16;
+
+    /** Logarithmic display: proportion = log(1 + t) / log(1 + max). t = 0 stays at the left edge. */
+    float timeToDisplayProportion (float timeSeconds)
+    {
+        timeSeconds = juce::jlimit (0.0f, graphTimeMaxSeconds, timeSeconds);
+        return std::log (1.0f + timeSeconds) / std::log (1.0f + graphTimeMaxSeconds);
+    }
+
+    float displayProportionToTime (float proportion)
+    {
+        proportion = juce::jlimit (0.0f, 1.0f, proportion);
+        return std::exp (proportion * std::log (1.0f + graphTimeMaxSeconds)) - 1.0f;
+    }
 }
 
 ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsToUse)
@@ -271,13 +284,13 @@ float ModEnvelopeEditor::timeToX (float timeSeconds, juce::Rectangle<float> grap
 float ModEnvelopeEditor::timeToXForLane (float timeSeconds, juce::Rectangle<float> graph, Lane lane) const
 {
     juce::ignoreUnused (lane);
-    return graph.getX() + (timeSeconds / graphTimeMaxSeconds) * graph.getWidth();
+    return graph.getX() + timeToDisplayProportion (timeSeconds) * graph.getWidth();
 }
 
 float ModEnvelopeEditor::xToTime (float x, juce::Rectangle<float> graph) const
 {
     const auto proportion = juce::jlimit (0.0f, 1.0f, (x - graph.getX()) / graph.getWidth());
-    return proportion * graphTimeMaxSeconds;
+    return displayProportionToTime (proportion);
 }
 
 float ModEnvelopeEditor::valueToY (float normalized, juce::Rectangle<float> graph) const
@@ -436,6 +449,13 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
         g.drawHorizontalLine (juce::roundToInt (y), graph.getX(), graph.getRight());
     }
 
+    for (const float tickSeconds : { 1.0f, 2.0f, 5.0f })
+    {
+        const auto tickX = timeToX (tickSeconds, graph);
+        g.setColour (juce::Colour (0xff2a3238));
+        g.drawVerticalLine (juce::roundToInt (tickX), graph.getY(), graph.getBottom());
+    }
+
     const auto timeAxis = juce::Rectangle<float> (graph.getX(), graph.getBottom() + 2.0f,
                                                   graph.getWidth(), static_cast<float> (timeAxisHeight));
     g.setColour (juce::Colour (0xff6d767e));
@@ -443,6 +463,19 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
     g.drawText ("0 s", timeAxis.getX(), timeAxis.getY(), 36.0f, timeAxis.getHeight(), juce::Justification::centredLeft);
     g.drawText (juce::String (graphTimeMaxSeconds, 0) + " s",
                 timeAxis.getRight() - 40.0f, timeAxis.getY(), 40.0f, timeAxis.getHeight(), juce::Justification::centredRight);
+
+    for (const float tickSeconds : { 1.0f, 2.0f, 5.0f })
+    {
+        const auto tickX = timeToX (tickSeconds, graph);
+        const auto label = juce::String (tickSeconds, tickSeconds >= 1.0f ? 0 : 1) + " s";
+        const auto labelWidth = 28.0f;
+        g.drawText (label,
+                    tickX - labelWidth * 0.5f,
+                    timeAxis.getY(),
+                    labelWidth,
+                    timeAxis.getHeight(),
+                    juce::Justification::centred);
+    }
 
     const auto endTime = envelope.getMaxTimeSeconds (activeLane);
     if (endTime > 0.05f && endTime < graphTimeMaxSeconds)
