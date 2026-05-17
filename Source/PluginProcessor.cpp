@@ -685,8 +685,11 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             if (unisonSettings.count <= 1)
             {
                 oscSample = WaveformSynth::computeOscillatorSample (voice.phase,
+                                                                      voice.phaseIncrement,
                                                                       voice.subPhase,
+                                                                      voice.subPhaseIncrement,
                                                                       voice.fifthPhase,
+                                                                      voice.fifthPhaseIncrement,
                                                                       waveformMorph,
                                                                       pulseWidth,
                                                                       overtones);
@@ -696,8 +699,11 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 for (int u = 0; u < unisonSettings.count; ++u)
                 {
                     oscSample += WaveformSynth::computeOscillatorSample (voice.unisonPhase[u],
+                                                                         voice.unisonPhaseIncrement[u],
                                                                          voice.unisonSubPhase[u],
+                                                                         voice.unisonSubPhaseIncrement[u],
                                                                          voice.unisonFifthPhase[u],
+                                                                         voice.unisonFifthPhaseIncrement[u],
                                                                          waveformMorph,
                                                                          pulseWidth,
                                                                          overtones);

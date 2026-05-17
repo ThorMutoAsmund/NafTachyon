@@ -14,6 +14,7 @@ namespace
     constexpr auto overtonesParamId = "overtones";
 
     float samplePreviewWave (double t,
+                             double phaseIncrement,
                              float morph,
                              float pulseWidth,
                              float overtones)
@@ -23,8 +24,11 @@ namespace
         const auto fifthPhase = phase * WaveformSynth::perfectFifthRatio;
 
         return WaveformSynth::computeOscillatorSample (phase,
+                                                       phaseIncrement,
                                                        subPhase,
+                                                       phaseIncrement * 0.5,
                                                        fifthPhase,
+                                                       phaseIncrement * WaveformSynth::perfectFifthRatio,
                                                        morph,
                                                        pulseWidth,
                                                        overtones);
@@ -66,6 +70,9 @@ void WaveformPreview::paint (juce::Graphics& g)
 
     const auto numColumns = juce::jmax (1, static_cast<int> (std::ceil (bounds.getWidth())));
     const auto samplesPerColumn = overtones > 0.001f ? 48 : 16;
+    const auto phaseIncrement = juce::MathConstants<double>::twoPi
+                                / (static_cast<double> (numColumns)
+                                   * static_cast<double> (samplesPerColumn));
 
     g.setColour (juce::Colour (0xffff8c1a));
 
@@ -86,7 +93,7 @@ void WaveformPreview::paint (juce::Graphics& g)
                                        tStart,
                                        tEnd);
 
-            const auto value = samplePreviewWave (t, morph, pulseWidth, overtones);
+            const auto value = samplePreviewWave (t, phaseIncrement, morph, pulseWidth, overtones);
             minSample = juce::jmin (minSample, value);
             maxSample = juce::jmax (maxSample, value);
         }
