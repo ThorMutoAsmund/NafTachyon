@@ -7,17 +7,6 @@
 namespace
 {
     constexpr float waveformSegment = 1.0f / 3.0f;
-    constexpr float dutyEpsilon = 0.0001f;
-
-    float pulseWidthGain (float pulseWidth)
-    {
-        pulseWidth = juce::jlimit (-1.0f, 1.0f, pulseWidth);
-
-        if (std::abs (pulseWidth) >= 1.0f)
-            return 0.0f;
-
-        return 1.0f;
-    }
 
     float waveSine (double phase)
     {
@@ -44,14 +33,32 @@ namespace
     {
         pulseWidth = juce::jlimit (-1.0f, 1.0f, pulseWidth);
 
-        if (std::abs (pulseWidth) >= 1.0f)
+        if (std::abs (pulseWidth) < 1.0e-5f)
             return phase;
 
-        const auto duty = juce::jmap (pulseWidth, -1.0f, 1.0f, dutyEpsilon, 1.0f - dutyEpsilon);
         auto cyclePos = std::fmod (phase / juce::MathConstants<double>::twoPi, 1.0);
 
         if (cyclePos < 0.0)
             cyclePos += 1.0;
+
+        // At ±100% the whole cycle stays in one waveform half (full rail, not a thin opposite blip).
+        constexpr auto halfSpan = 0.5 - 1.0e-6;
+
+        if (pulseWidth >= 1.0f - 1.0e-5f)
+        {
+            const auto warpedPos = cyclePos * halfSpan;
+            return warpedPos * juce::MathConstants<double>::twoPi;
+        }
+
+        if (pulseWidth <= -1.0f + 1.0e-5f)
+        {
+            const auto warpedPos = 0.5 + cyclePos * halfSpan;
+            return warpedPos * juce::MathConstants<double>::twoPi;
+        }
+
+        const auto duty = pulseWidth > 0.0f
+                              ? juce::jmap (pulseWidth, 0.0f, 1.0f, 0.5f, 1.0f)
+                              : juce::jmap (pulseWidth, -1.0f, 0.0f, 0.0f, 0.5f);
 
         double warpedPos = 0.0;
 
@@ -118,5 +125,5 @@ float WaveformSynth::computeOscillatorSample (double phase,
         mixLevel += fifthBlend;
     }
 
-    return (mixedSample / mixLevel) * pulseWidthGain (pulseWidth);
+    return mixedSample / mixLevel;
 }
