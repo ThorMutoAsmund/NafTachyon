@@ -50,7 +50,7 @@ namespace
 
     constexpr int waveformPanelHeight = 160;
 
-    constexpr int evolvePanelHeight = 196;
+    constexpr int evolvePanelHeight = 392;
 
     constexpr int sectionGap = 6;
 
@@ -195,7 +195,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
 
 
-    setSize (700, 740);
+    setSize (700, 936);
 
 }
 
