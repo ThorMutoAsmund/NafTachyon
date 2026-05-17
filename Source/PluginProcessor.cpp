@@ -96,6 +96,13 @@ namespace
         return std::pow (2.0, static_cast<double> (pitchWheelNormalised * pitchBendRangeSemitones) / 12.0);
     }
 
+    juce::NormalisableRange<float> makeFilterCutoffRange()
+    {
+        juce::NormalisableRange<float> range { 20.0f, 20000.0f };
+        range.setSkewForCentre (std::sqrt (20.0f * 20000.0f));
+        return range;
+    }
+
     juce::String waveformMorphToString (float morph)
     {
         morph = juce::jlimit (0.0f, 1.0f, morph);
@@ -167,7 +174,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { filterCutoffParamId, 1 },
         "Cutoff",
-        juce::NormalisableRange<float> { 20.0f, 20000.0f, 0.0f, 0.3f },
+        makeFilterCutoffRange(),
         20000.0f,
         juce::AudioParameterFloatAttributes()
             .withLabel ("Hz")

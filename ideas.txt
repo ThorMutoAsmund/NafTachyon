@@ -1,0 +1,20 @@
+Fixed pulse width
+Fixed aliasing at high notes
+Mod wheel changes vibrato
+Pitch bend should work (+/- two semitones)
+
+
+
+
+
+Der er et problem når man optager automation: Den opretter kurver for mange parametre på en gang. Den skal kun oprette én for den parameter man justerer. 
+
+Det kan også være rart at kunne sende velocity til cutoff i stedet for bare volume.
+
+class BetterSlider : public Slider
+{
+    this->onDragStart = [&]
+    {
+        this->setMouseDragSensitivity(ModifierKeys::currentModifiers.isCtrlDown() ? 2500 : 250);
+    };
+}

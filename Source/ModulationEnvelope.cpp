@@ -93,7 +93,10 @@ void ModEnvelopeParamIds::addParameters (juce::AudioProcessorValueTreeState::Par
             juce::NormalisableRange<float> valueRange { definition.minValue, definition.maxValue, 0.001f };
 
             if (definition.logScale)
-                valueRange = juce::NormalisableRange<float> { definition.minValue, definition.maxValue, 0.0f, definition.timeSkew };
+            {
+                valueRange = juce::NormalisableRange<float> { definition.minValue, definition.maxValue };
+                valueRange.setSkewForCentre (std::sqrt (definition.minValue * definition.maxValue));
+            }
 
             layout.add (std::make_unique<juce::AudioParameterFloat> (
                 juce::ParameterID { pointValue (lane, i), 1 },
