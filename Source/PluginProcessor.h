@@ -169,7 +169,9 @@ private:
 
         float releaseStartAmplitude = 1.0f;
 
-        float level = 0.0f;
+        float ampVelScale = 1.0f;
+
+        float cutoffVelScale = 1.0f;
 
         float onePoleState = 0.0f;
 

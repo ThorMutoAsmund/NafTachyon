@@ -23,6 +23,30 @@ namespace
     constexpr auto pulseWidthParamId  = "pulseWidth";
     constexpr auto unisonParamId        = "unison";
     constexpr auto unisonSpreadParamId  = "unisonSpread";
+    constexpr auto amplitudeVelSensitivityParamId = "amplitudeVelSensitivity";
+    constexpr auto cutoffVelSensitivityParamId    = "cutoffVelSensitivity";
+
+    constexpr float maxCutoffVelocityOctaves = 4.0f;
+
+    void computeVoiceVelocityScales (float velocityNorm,
+                                     float ampVelSensitivity,
+                                     float cutoffVelSensitivity,
+                                     float& outAmpScale,
+                                     float& outCutoffScale)
+    {
+        outAmpScale = juce::jmap (juce::jlimit (0.0f, 1.0f, ampVelSensitivity),
+                                  0.0f, 1.0f, 1.0f, velocityNorm);
+
+        if (cutoffVelSensitivity <= 0.0f)
+        {
+            outCutoffScale = 1.0f;
+            return;
+        }
+
+        const auto sensitivity = juce::jlimit (0.0f, 1.0f, cutoffVelSensitivity);
+        const auto octaveSpan = maxCutoffVelocityOctaves * sensitivity;
+        outCutoffScale = std::pow (2.0f, (velocityNorm - 1.0f) * octaveSpan);
+    }
 
     constexpr int unisonStackSize = 5;
 
@@ -155,6 +179,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
         juce::AudioParameterFloatAttributes().withLabel ("")));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { amplitudeVelSensitivityParamId, 1 },
+        "Amplitude velocity sensitivity",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
+        1.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value * 100.0f)) + "%";
+            })));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { releaseTimeParamId, 1 },
         "Release Time",
         juce::NormalisableRange<float> { 0.0f, 5.0f, 0.001f, 0.35f },
@@ -197,6 +232,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
             .withStringFromValueFunction ([] (float value, int)
             {
                 return juce::String (value, 2);
+            })));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { cutoffVelSensitivityParamId, 1 },
+        "Cutoff velocity sensitivity",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
+        0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value * 100.0f)) + "%";
             })));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
@@ -551,12 +597,19 @@ float NafTachyonAudioProcessor::filterSample (float input,
 void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
 {
     const auto knobSnapshot = ModEnvelopeParamIds::readKnobSnapshot (apvts);
+    const auto velocityNorm = static_cast<float> (velocity) / 127.0f;
+    const auto ampVelSensitivity = apvts.getRawParameterValue (amplitudeVelSensitivityParamId)->load();
+    const auto cutoffVelSensitivity = apvts.getRawParameterValue (cutoffVelSensitivityParamId)->load();
+    float ampVelScale = 1.0f;
+    float cutoffVelScale = 1.0f;
+    computeVoiceVelocityScales (velocityNorm, ampVelSensitivity, cutoffVelSensitivity, ampVelScale, cutoffVelScale);
 
     for (auto& voice : voices)
     {
         if (voice.isActive && voice.midiNote == midiNote)
         {
-            voice.level = static_cast<float> (velocity) / 127.0f;
+            voice.ampVelScale = ampVelScale;
+            voice.cutoffVelScale = cutoffVelScale;
             voice.inRelease = false;
             voice.phase = 0.0;
             voice.subPhase = 0.0;
@@ -587,7 +640,8 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
             voice.subPhase = 0.0;
             voice.fifthPhase = 0.0;
             resetUnisonPhases (voice);
-            voice.level = static_cast<float> (velocity) / 127.0f;
+            voice.ampVelScale = ampVelScale;
+            voice.cutoffVelScale = cutoffVelScale;
             voice.phaseIncrement = juce::MathConstants<double>::twoPi * frequency / currentSampleRate;
             voice.subPhaseIncrement = voice.phaseIncrement * 0.5;
             voice.fifthPhaseIncrement = voice.phaseIncrement * WaveformSynth::perfectFifthRatio;
@@ -847,6 +901,9 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             if (! cutoffModEnabled)
                 cutoffHz = filterCutoffSmoother.getNextValue();
 
+            cutoffHz *= voice.cutoffVelScale;
+            cutoffHz = juce::jlimit (20.0f, 20000.0f, cutoffHz);
+
             if (! resonanceModEnabled)
                 resonance = filterResonanceSmoother.getNextValue();
 
@@ -888,7 +945,7 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 oscSample *= unisonSettings.normalise;
             }
 
-            oscSample *= voice.level * amplitude * voiceGain;
+            oscSample *= voice.ampVelScale * amplitude * voiceGain;
 
             const auto filterCoeffs = makeFilterCoefficients (cutoffHz, resonance, filterSlope);
 

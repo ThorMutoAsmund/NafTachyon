@@ -102,9 +102,13 @@ private:
 
     juce::Slider releaseTimeSlider;
 
+    juce::Slider amplitudeVelSensitivitySlider;
+
     juce::Label amplitudeLabel;
 
     juce::Label releaseTimeLabel;
+
+    juce::Label amplitudeVelSensitivityLabel;
 
 
 
@@ -128,7 +132,11 @@ private:
 
     juce::Slider cutoffSlider, resonanceSlider;
 
+    juce::Slider cutoffVelSensitivitySlider;
+
     juce::Label cutoffLabel, resonanceLabel;
+
+    juce::Label cutoffVelSensitivityLabel;
 
     juce::ComboBox filterSlopeCombo;
 
@@ -152,6 +160,8 @@ private:
 
     std::unique_ptr<SliderAttachment> releaseTimeAttachment;
 
+    std::unique_ptr<SliderAttachment> amplitudeVelSensitivityAttachment;
+
     std::unique_ptr<SliderAttachment> waveformAttachment;
 
     std::unique_ptr<SliderAttachment> pulseWidthAttachment;
@@ -161,6 +171,8 @@ private:
     std::unique_ptr<SliderAttachment> cutoffAttachment;
 
     std::unique_ptr<SliderAttachment> resonanceAttachment;
+
+    std::unique_ptr<SliderAttachment> cutoffVelSensitivityAttachment;
 
     std::unique_ptr<ComboBoxAttachment> filterSlopeAttachment;
 

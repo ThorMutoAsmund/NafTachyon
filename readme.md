@@ -1,8 +1,7 @@
 # V1.3.0
-
 - Evolve lanes (when on) modulate knob baseline
 - Increase available points on evolve lanes to 12
-
+- Evolve lane loop option (locks level of last point)
 
 
 # V1.2.0

@@ -139,6 +139,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureKnob (mainGroup, releaseTimeSlider, releaseTimeLabel, "Release Time");
 
+    configureKnob (mainGroup, amplitudeVelSensitivitySlider, amplitudeVelSensitivityLabel, "Amp velocity");
+
 
 
     configureKnob (waveformGroup, waveformSlider, waveformLabel, "Shape");
@@ -157,6 +159,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureKnob (filterGroup, resonanceSlider, resonanceLabel, "Resonance");
 
+    configureKnob (filterGroup, cutoffVelSensitivitySlider, cutoffVelSensitivityLabel, "Cutoff velocity");
+
     configureFilterSlopeControl (filterGroup);
 
     configureKnob (unisonGroup, unisonSlider, unisonLabel, "Voices");
@@ -172,6 +176,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     releaseTimeAttachment = std::make_unique<SliderAttachment> (apvts, "releaseTime",     releaseTimeSlider);
 
+    amplitudeVelSensitivityAttachment = std::make_unique<SliderAttachment> (apvts, "amplitudeVelSensitivity", amplitudeVelSensitivitySlider);
+
     waveformAttachment   = std::make_unique<SliderAttachment> (apvts, "waveform",        waveformSlider);
 
     pulseWidthAttachment = std::make_unique<SliderAttachment> (apvts, "pulseWidth",      pulseWidthSlider);
@@ -181,6 +187,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
     cutoffAttachment     = std::make_unique<SliderAttachment> (apvts, "filterCutoff",    cutoffSlider);
 
     resonanceAttachment  = std::make_unique<SliderAttachment> (apvts, "filterResonance", resonanceSlider);
+
+    cutoffVelSensitivityAttachment = std::make_unique<SliderAttachment> (apvts, "cutoffVelSensitivity", cutoffVelSensitivitySlider);
 
     filterSlopeAttachment = std::make_unique<ComboBoxAttachment> (apvts, "filterSlope", filterSlopeCombo);
 
@@ -327,17 +335,21 @@ void NafTachyonAudioProcessorEditor::layoutMainControls (juce::Rectangle<int> ar
 
 {
 
-    const int columnWidth = area.getWidth() / 2;
+    const int columnWidth = area.getWidth() / 3;
 
     auto labelRow = area.removeFromTop (labelRowHeight);
 
     amplitudeLabel.setBounds (labelRow.removeFromLeft (columnWidth));
 
-    releaseTimeLabel.setBounds (labelRow);
+    releaseTimeLabel.setBounds (labelRow.removeFromLeft (columnWidth));
+
+    amplitudeVelSensitivityLabel.setBounds (labelRow);
 
     layoutCentredDial (amplitudeSlider, area.removeFromLeft (columnWidth), dialSize);
 
-    layoutCentredDial (releaseTimeSlider, area, dialSize);
+    layoutCentredDial (releaseTimeSlider, area.removeFromLeft (columnWidth), dialSize);
+
+    layoutCentredDial (amplitudeVelSensitivitySlider, area, dialSize);
 
 }
 
@@ -364,7 +376,7 @@ void NafTachyonAudioProcessorEditor::layoutFilterControls (juce::Rectangle<int> 
 
 {
 
-    const int columnWidth = area.getWidth() / 3;
+    const int columnWidth = area.getWidth() / 4;
 
 
 
@@ -374,6 +386,8 @@ void NafTachyonAudioProcessorEditor::layoutFilterControls (juce::Rectangle<int> 
 
     resonanceLabel.setBounds (labelRow.removeFromLeft (columnWidth));
 
+    cutoffVelSensitivityLabel.setBounds (labelRow.removeFromLeft (columnWidth));
+
     filterSlopeLabel.setBounds (labelRow);
 
 
@@ -381,6 +395,8 @@ void NafTachyonAudioProcessorEditor::layoutFilterControls (juce::Rectangle<int> 
     layoutCentredDial (cutoffSlider, area.removeFromLeft (columnWidth), dialSize);
 
     layoutCentredDial (resonanceSlider, area.removeFromLeft (columnWidth), dialSize);
+
+    layoutCentredDial (cutoffVelSensitivitySlider, area.removeFromLeft (columnWidth), dialSize);
 
 
 
