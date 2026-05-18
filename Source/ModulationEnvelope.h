@@ -22,10 +22,12 @@ struct ModLanePoint
     float value = 0.0f;
 };
 
+inline constexpr int modEnvelopeMaxPoints = 12;
+
 struct ModLaneEnvelope
 {
-    ModLanePoint points[6];
-    float segmentCurves[5] {};
+    ModLanePoint points[modEnvelopeMaxPoints];
+    float segmentCurves[modEnvelopeMaxPoints - 1] {};
     int numPoints = 2;
 };
 
@@ -34,7 +36,7 @@ struct ModKnobSnapshot;
 class ModulationEnvelope
 {
 public:
-    static constexpr int maxPoints = 6;
+    static constexpr int maxPoints = modEnvelopeMaxPoints;
     static constexpr int maxSegments = maxPoints - 1;
     static constexpr int numLanes = 6;
 
