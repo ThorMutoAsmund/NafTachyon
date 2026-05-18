@@ -1,10 +1,10 @@
 
 # V1.2.0
-- Pulse width weird at ends
-- Aliasing at high notes
+- Fixed bug: Pulse width weird at ends
+- Fixed bug: Aliasing at high notes
+- Fixed bug: cutoff dial->value mapping
 - Mod wheel changes vibrato
-- Pitch bend should work (+/- two semitones)
-- Fixed cutoff dial->value mapping
+- Pitch bend should work now (+/- two semitones)
 - Change the order of the things you can select in the EVOLVE section so it is:
 - Changed height of evolve area
 - Detune amount
