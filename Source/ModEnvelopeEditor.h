@@ -68,7 +68,12 @@ private:
     void setPointValue (Lane lane, int index, float value);
     void setSegmentCurve (Lane lane, int segmentIndex, float curve);
     float getPointValue (Lane lane, int index) const;
+    float getStoredPointValue (Lane lane, int index) const;
     float getSegmentCurve (Lane lane, int segmentIndex) const;
+
+    bool isLastPointIndex (Lane lane, int index) const;
+    /** Last point value mirrors first while loop is on; time remains editable. */
+    bool isLastPointValueLockedForLoop (Lane lane) const;
 
     void setActiveLane (Lane lane);
     void paintLaneStrip (juce::Graphics& g);
@@ -87,6 +92,7 @@ private:
     DragState drag;
 
     juce::ToggleButton enabledToggle { "On" };
+    juce::ToggleButton loopToggle { "Loop" };
     juce::TextButton addPointButton { "+" };
     juce::TextButton removePointButton { "-" };
     juce::Label pointCountLabel;
@@ -95,8 +101,9 @@ private:
     juce::Rectangle<float> laneStripBounds;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enabledAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> loopAttachment;
 
-    void updateEnabledAttachment();
+    void updateLaneToggleAttachments();
 
     void attachKnobListeners();
 

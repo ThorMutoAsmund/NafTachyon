@@ -64,6 +64,11 @@ juce::String ModEnvelopeParamIds::laneEnabled (ModulationEnvelope::Lane lane)
     return juce::String (getLaneDefinition (lane).prefix) + "Enabled";
 }
 
+juce::String ModEnvelopeParamIds::laneLoop (ModulationEnvelope::Lane lane)
+{
+    return juce::String (getLaneDefinition (lane).prefix) + "Loop";
+}
+
 juce::String ModEnvelopeParamIds::numPoints (ModulationEnvelope::Lane lane)
 {
     return juce::String (getLaneDefinition (lane).prefix) + "NumPoints";
@@ -94,6 +99,11 @@ void ModEnvelopeParamIds::addParameters (juce::AudioProcessorValueTreeState::Par
         layout.add (std::make_unique<juce::AudioParameterBool> (
             juce::ParameterID { laneEnabled (lane), 1 },
             juce::String (definition.prefix) + " enabled",
+            false));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { laneLoop (lane), 1 },
+            juce::String (definition.prefix) + " loop",
             false));
 
         layout.add (std::make_unique<juce::AudioParameterInt> (
@@ -214,7 +224,15 @@ void ModulationEnvelope::updateFromApvts (juce::AudioProcessorValueTreeState& ap
         }
 
         laneEnvelope.points[0].timeSeconds = 0.0f;
+
+        if (auto* loopParam = apvts.getRawParameterValue (ModEnvelopeParamIds::laneLoop (lane)))
+            laneEnvelope.loopEnabled = loopParam->load() >= 0.5f;
     }
+}
+
+bool ModulationEnvelope::isLaneLoopEnabled (Lane lane) const
+{
+    return lanes[static_cast<size_t> (lane)].loopEnabled;
 }
 
 int ModulationEnvelope::getNumPoints (Lane lane) const
@@ -313,31 +331,62 @@ void ModEnvelopeParamIds::syncAllFirstPointsFromKnobs (juce::AudioProcessorValue
     juce::ignoreUnused (apvts);
 }
 
-float ModulationEnvelope::interpolateLaneAbsolute (const ModLaneEnvelope& lane, float elapsedSeconds)
+float ModulationEnvelope::mapLoopingLaneTime (const ModLaneEnvelope& lane, float elapsedSeconds, bool loop)
 {
-    const auto& first = lane.points[0];
+    if (! loop || lane.numPoints < 2)
+        return elapsedSeconds;
 
-    if (lane.numPoints <= 1 || elapsedSeconds <= first.timeSeconds)
-        return first.value;
+    const auto loopStart = lane.points[0].timeSeconds;
+    const auto loopEnd = lane.points[static_cast<size_t> (lane.numPoints - 1)].timeSeconds;
+    const auto loopLength = loopEnd - loopStart;
 
-    const auto& last = lane.points[static_cast<size_t> (lane.numPoints - 1)];
+    if (loopLength <= 1.0e-6f)
+        return elapsedSeconds;
 
-    if (elapsedSeconds >= last.timeSeconds)
-        return last.value;
+    if (elapsedSeconds <= loopEnd)
+        return elapsedSeconds;
+
+    return loopStart + std::fmod (elapsedSeconds - loopStart, loopLength);
+}
+
+float ModulationEnvelope::getEffectivePointValue (const ModLaneEnvelope& lane, int index, bool loop)
+{
+    const auto safeIndex = juce::jlimit (0, lane.numPoints - 1, index);
+
+    if (loop && lane.numPoints >= 2 && safeIndex == lane.numPoints - 1)
+        return lane.points[0].value;
+
+    return lane.points[static_cast<size_t> (safeIndex)].value;
+}
+
+float ModulationEnvelope::interpolateLaneAbsolute (const ModLaneEnvelope& lane, float elapsedSeconds, bool loop)
+{
+    const auto laneTime = mapLoopingLaneTime (lane, elapsedSeconds, loop);
+    const auto lastIndex = lane.numPoints - 1;
+
+    if (lane.numPoints <= 1 || laneTime <= lane.points[0].timeSeconds)
+        return getEffectivePointValue (lane, 0, loop);
+
+    const auto& last = lane.points[static_cast<size_t> (lastIndex)];
+
+    if (laneTime >= last.timeSeconds)
+        return getEffectivePointValue (lane, lastIndex, loop);
 
     for (int i = 0; i < lane.numPoints - 1; ++i)
     {
         const auto& a = lane.points[static_cast<size_t> (i)];
         const auto& b = lane.points[static_cast<size_t> (i + 1)];
 
-        if (elapsedSeconds >= a.timeSeconds && elapsedSeconds < b.timeSeconds)
+        if (laneTime >= a.timeSeconds && laneTime < b.timeSeconds)
         {
+            const auto valueA = getEffectivePointValue (lane, i, loop);
+            const auto valueB = getEffectivePointValue (lane, i + 1, loop);
             const auto curve = lane.segmentCurves[static_cast<size_t> (i)];
-            return sampleSegment (a.timeSeconds, a.value, b.timeSeconds, b.value, elapsedSeconds, curve);
+            return sampleSegment (a.timeSeconds, valueA, b.timeSeconds, valueB, laneTime, curve);
         }
     }
 
-    return last.value;
+    return getEffectivePointValue (lane, lastIndex, loop);
 }
 
 float ModulationEnvelope::interpolateLane (const ModLaneEnvelope& lane, float elapsedSeconds, float startValue)
@@ -371,17 +420,28 @@ float ModulationEnvelope::interpolateLane (const ModLaneEnvelope& lane, float el
 ModulatedParams ModulationEnvelope::evaluate (float elapsedSeconds, const ModKnobSnapshot& knobSnapshot) const
 {
     ModulatedParams result;
-    const auto shapeMultiplier = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::shape)], elapsedSeconds);
+    const auto& shapeLane = lanes[static_cast<size_t> (Lane::shape)];
+    const auto shapeMultiplier = interpolateLaneAbsolute (shapeLane, elapsedSeconds, shapeLane.loopEnabled);
     result.shape = juce::jlimit (0.0f, 1.0f, knobSnapshot.shape * shapeMultiplier);
-    const auto widthOffset = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::width)], elapsedSeconds);
+
+    const auto& widthLane = lanes[static_cast<size_t> (Lane::width)];
+    const auto widthOffset = interpolateLaneAbsolute (widthLane, elapsedSeconds, widthLane.loopEnabled);
     result.pulseWidth = juce::jlimit (-1.0f, 1.0f, knobSnapshot.pulseWidth + widthOffset);
-    const auto overtonesMultiplier = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::overtones)], elapsedSeconds);
+
+    const auto& overtonesLane = lanes[static_cast<size_t> (Lane::overtones)];
+    const auto overtonesMultiplier = interpolateLaneAbsolute (overtonesLane, elapsedSeconds, overtonesLane.loopEnabled);
     result.overtones = juce::jlimit (0.0f, 1.0f, knobSnapshot.overtones * overtonesMultiplier);
-    const auto cutoffMultiplier = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::cutoff)], elapsedSeconds);
+
+    const auto& cutoffLane = lanes[static_cast<size_t> (Lane::cutoff)];
+    const auto cutoffMultiplier = interpolateLaneAbsolute (cutoffLane, elapsedSeconds, cutoffLane.loopEnabled);
     result.cutoffHz = juce::jlimit (20.0f, 20000.0f, knobSnapshot.cutoffHz * cutoffMultiplier);
-    const auto resonanceMultiplier = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::resonance)], elapsedSeconds);
+
+    const auto& resonanceLane = lanes[static_cast<size_t> (Lane::resonance)];
+    const auto resonanceMultiplier = interpolateLaneAbsolute (resonanceLane, elapsedSeconds, resonanceLane.loopEnabled);
     result.resonance = juce::jlimit (0.0f, 1.0f, knobSnapshot.resonance * resonanceMultiplier);
-    const auto amplitudeMultiplier = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::amplitude)], elapsedSeconds);
+
+    const auto& amplitudeLane = lanes[static_cast<size_t> (Lane::amplitude)];
+    const auto amplitudeMultiplier = interpolateLaneAbsolute (amplitudeLane, elapsedSeconds, amplitudeLane.loopEnabled);
     result.amplitude = juce::jlimit (0.0f, 1.0f, knobSnapshot.amplitude * amplitudeMultiplier);
     return result;
 }

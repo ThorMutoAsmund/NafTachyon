@@ -53,6 +53,10 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
     enabledToggle.setMouseClickGrabsKeyboardFocus (false);
     addAndMakeVisible (enabledToggle);
 
+    loopToggle.setWantsKeyboardFocus (false);
+    loopToggle.setMouseClickGrabsKeyboardFocus (false);
+    addAndMakeVisible (loopToggle);
+
     addPointButton.onClick = [this]
     {
         const auto count = envelope.getNumPoints (activeLane);
@@ -98,7 +102,7 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
     pointCountLabel.setFont (juce::FontOptions (11.0f));
     addAndMakeVisible (pointCountLabel);
 
-    updateEnabledAttachment();
+    updateLaneToggleAttachments();
 
     ModEnvelopeParamIds::syncAllFirstPointsFromKnobs (apvts);
     attachKnobListeners();
@@ -115,6 +119,7 @@ ModEnvelopeEditor::~ModEnvelopeEditor()
     {
         const auto lane = static_cast<Lane> (laneIndex);
         apvts.removeParameterListener (ModEnvelopeParamIds::laneEnabled (lane), this);
+        apvts.removeParameterListener (ModEnvelopeParamIds::laneLoop (lane), this);
     }
 }
 
@@ -137,6 +142,7 @@ void ModEnvelopeEditor::attachKnobListeners()
     {
         const auto lane = static_cast<Lane> (laneIndex);
         apvts.addParameterListener (ModEnvelopeParamIds::laneEnabled (lane), this);
+        apvts.addParameterListener (ModEnvelopeParamIds::laneLoop (lane), this);
     }
 }
 
@@ -144,7 +150,7 @@ void ModEnvelopeEditor::parameterChanged (const juce::String& parameterID, float
 {
     juce::ignoreUnused (newValue);
 
-    if (parameterID.contains ("Enabled"))
+    if (parameterID.contains ("Enabled") || parameterID.contains ("Loop"))
     {
         refreshEnvelopeFromApvts();
         repaint();
@@ -159,11 +165,15 @@ void ModEnvelopeEditor::parameterChanged (const juce::String& parameterID, float
     repaint();
 }
 
-void ModEnvelopeEditor::updateEnabledAttachment()
+void ModEnvelopeEditor::updateLaneToggleAttachments()
 {
     enabledAttachment.reset();
     enabledAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         apvts, ModEnvelopeParamIds::laneEnabled (activeLane), enabledToggle);
+
+    loopAttachment.reset();
+    loopAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        apvts, ModEnvelopeParamIds::laneLoop (activeLane), loopToggle);
 }
 
 void ModEnvelopeEditor::setActiveLane (Lane lane)
@@ -172,7 +182,7 @@ void ModEnvelopeEditor::setActiveLane (Lane lane)
         return;
 
     activeLane = lane;
-    updateEnabledAttachment();
+    updateLaneToggleAttachments();
     refreshEnvelopeFromApvts();
     repaint();
 }
@@ -198,6 +208,8 @@ void ModEnvelopeEditor::resized()
 
     auto toolbar = area.removeFromTop (toolbarHeight);
     enabledToggle.setBounds (toolbar.removeFromLeft (44));
+    toolbar.removeFromLeft (6);
+    loopToggle.setBounds (toolbar.removeFromLeft (52));
     toolbar.removeFromLeft (8);
     addPointButton.setBounds (toolbar.removeFromLeft (26));
     toolbar.removeFromLeft (4);
@@ -278,13 +290,21 @@ void ModEnvelopeEditor::paintLaneStrip (juce::Graphics& g)
                     juce::Justification::centredLeft,
                     true);
 
+        const auto dotSize = 5.0f;
+        auto dotX = rowBounds.getRight() - dotSize - 3.0f;
+        const auto dotY = rowBounds.getCentreY() - dotSize * 0.5f;
+
+        if (envelope.isLaneLoopEnabled (lane))
+        {
+            dotX -= dotSize + 2.0f;
+            g.setColour (laneColour (lane).withAlpha (isEnabled ? 0.9f : 0.35f));
+            g.fillEllipse (dotX, dotY, dotSize, dotSize);
+        }
+
         if (isEnabled)
         {
-            const auto dotSize = 5.0f;
-            const auto dotX = rowBounds.getRight() - dotSize - 3.0f;
-            const auto dotY = rowBounds.getCentreY() - dotSize * 0.5f;
             g.setColour (laneColour (lane));
-            g.fillEllipse (dotX, dotY, dotSize, dotSize);
+            g.fillEllipse (rowBounds.getRight() - dotSize - 3.0f, dotY, dotSize, dotSize);
         }
     }
 }
@@ -387,7 +407,7 @@ float ModEnvelopeEditor::yToNormalized (float y, juce::Rectangle<float> graph) c
     return juce::jlimit (0.0f, 1.0f, (graph.getBottom() - y) / graph.getHeight());
 }
 
-float ModEnvelopeEditor::getPointValue (Lane lane, int index) const
+float ModEnvelopeEditor::getStoredPointValue (Lane lane, int index) const
 {
     const auto value = apvts.getRawParameterValue (ModEnvelopeParamIds::pointValue (lane, index))->load();
 
@@ -395,6 +415,24 @@ float ModEnvelopeEditor::getPointValue (Lane lane, int index) const
         return juce::jlimit (-1.0f, 1.0f, value);
 
     return value;
+}
+
+bool ModEnvelopeEditor::isLastPointIndex (Lane lane, int index) const
+{
+    return index == envelope.getNumPoints (lane) - 1;
+}
+
+bool ModEnvelopeEditor::isLastPointValueLockedForLoop (Lane lane) const
+{
+    return envelope.isLaneLoopEnabled (lane) && envelope.getNumPoints (lane) >= 2;
+}
+
+float ModEnvelopeEditor::getPointValue (Lane lane, int index) const
+{
+    if (isLastPointValueLockedForLoop (lane) && isLastPointIndex (lane, index))
+        return getStoredPointValue (lane, 0);
+
+    return getStoredPointValue (lane, index);
 }
 
 void ModEnvelopeEditor::setPointTime (Lane lane, int index, float timeSeconds)
@@ -405,6 +443,9 @@ void ModEnvelopeEditor::setPointTime (Lane lane, int index, float timeSeconds)
 
 void ModEnvelopeEditor::setPointValue (Lane lane, int index, float value)
 {
+    if (isLastPointValueLockedForLoop (lane) && isLastPointIndex (lane, index))
+        return;
+
     if (lane == Lane::width)
         value = juce::jlimit (-1.0f, 1.0f, value);
 
@@ -594,11 +635,20 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
         const auto x = timeToX (point.timeSeconds, graph);
         const auto y = valueToY (laneToNormalized (activeLane, getPointValue (activeLane, i)), graph);
         const auto isActive = (drag.target == DragTarget::point && i == drag.index);
+        const auto isLoopLockedEnd = isLastPointValueLockedForLoop (activeLane) && isLastPointIndex (activeLane, i);
 
-        g.setColour (laneColour (activeLane).brighter (isActive ? 0.35f : 0.1f));
-        g.fillEllipse (x - 5.0f, y - 5.0f, 10.0f, 10.0f);
-        g.setColour (juce::Colour (0xff1a2024));
-        g.drawEllipse (x - 5.0f, y - 5.0f, 10.0f, 10.0f, 1.0f);
+        if (isLoopLockedEnd)
+        {
+            g.setColour (laneColour (activeLane).withAlpha (0.55f));
+            g.drawEllipse (x - 5.0f, y - 5.0f, 10.0f, 10.0f, 1.5f);
+        }
+        else
+        {
+            g.setColour (laneColour (activeLane).brighter (isActive ? 0.35f : 0.1f));
+            g.fillEllipse (x - 5.0f, y - 5.0f, 10.0f, 10.0f);
+            g.setColour (juce::Colour (0xff1a2024));
+            g.drawEllipse (x - 5.0f, y - 5.0f, 10.0f, 10.0f, 1.0f);
+        }
 
         if (i == 0)
         {
@@ -683,6 +733,7 @@ void ModEnvelopeEditor::mouseDrag (const juce::MouseEvent& e)
 
     const auto index = drag.index;
     const auto numPoints = envelope.getNumPoints (activeLane);
+    const auto valueLockedEnd = isLastPointValueLockedForLoop (activeLane) && isLastPointIndex (activeLane, index);
 
     auto newTime = xToTime (e.position.x, graph);
 
@@ -696,8 +747,11 @@ void ModEnvelopeEditor::mouseDrag (const juce::MouseEvent& e)
 
     setPointTime (activeLane, index, newTime);
 
-    const auto normalized = yToNormalized (e.position.y, graph);
-    setPointValue (activeLane, index, normalizedToLane (activeLane, normalized));
+    if (! valueLockedEnd)
+    {
+        const auto normalized = yToNormalized (e.position.y, graph);
+        setPointValue (activeLane, index, normalizedToLane (activeLane, normalized));
+    }
 
     refreshEnvelopeFromApvts();
     repaint();

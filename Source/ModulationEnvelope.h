@@ -29,6 +29,7 @@ struct ModLaneEnvelope
     ModLanePoint points[modEnvelopeMaxPoints];
     float segmentCurves[modEnvelopeMaxPoints - 1] {};
     int numPoints = 2;
+    bool loopEnabled = false;
 };
 
 struct ModKnobSnapshot;
@@ -70,12 +71,18 @@ public:
 
     bool isLaneEnabled (Lane lane, juce::AudioProcessorValueTreeState& apvts) const;
 
+    bool isLaneLoopEnabled (Lane lane) const;
+
     const ModLaneEnvelope& getLane (Lane lane) const { return lanes[static_cast<size_t> (lane)]; }
 
     float getSegmentCurve (Lane lane, int segmentIndex) const;
 
 private:
-    static float interpolateLaneAbsolute (const ModLaneEnvelope& lane, float elapsedSeconds);
+    static float mapLoopingLaneTime (const ModLaneEnvelope& lane, float elapsedSeconds, bool loop);
+
+    static float getEffectivePointValue (const ModLaneEnvelope& lane, int index, bool loop);
+
+    static float interpolateLaneAbsolute (const ModLaneEnvelope& lane, float elapsedSeconds, bool loop);
 
     static float interpolateLane (const ModLaneEnvelope& lane, float elapsedSeconds, float startValue);
 
@@ -97,6 +104,8 @@ struct ModKnobSnapshot
 namespace ModEnvelopeParamIds
 {
     juce::String laneEnabled (ModulationEnvelope::Lane lane);
+
+    juce::String laneLoop (ModulationEnvelope::Lane lane);
 
     juce::String numPoints (ModulationEnvelope::Lane lane);
     juce::String pointTime (ModulationEnvelope::Lane lane, int index);

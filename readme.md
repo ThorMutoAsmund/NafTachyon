@@ -1,9 +1,9 @@
 # V1.3.0
 
-|Lanes|Formula|Why|
-|-----|-----|-----|
-|Shape, Width, Harmonics, Resonance|knob + (curve(t) − curve(t₀))|Bipolar/unipolar offsets; knob is the manual center|
-|Cutoff, Amplitude|knob × (curve(t) / curve(t₀))|Level × envelope; cutoff scales proportionally in Hz|
+- Evolve lanes (when on) modulate knob baseline
+- Increase available points on evolve lanes to 12
+
+
 
 # V1.2.0
 - Fixed bug: Pulse width weird at ends
@@ -36,7 +36,6 @@
 
 
 # Future ideas
-- An "evolve ---> cutoff modulation amount" button or one big cutoff button
 - Problem when recording automation: (Den opretter kurver for mange parametre på en gang. Den skal kun oprette een for den parameter man justerer. )
 - Velocity to cutoff
 
