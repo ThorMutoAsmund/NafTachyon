@@ -389,7 +389,7 @@ float ModEnvelopeEditor::yToNormalized (float y, juce::Rectangle<float> graph) c
 
 float ModEnvelopeEditor::getPointValue (Lane lane, int index) const
 {
-    if (index == 0 && lane != Lane::cutoff)
+    if (index == 0 && lane == Lane::width)
         return ModEnvelopeParamIds::readKnobValue (lane, apvts);
 
     return apvts.getRawParameterValue (ModEnvelopeParamIds::pointValue (lane, index))->load();
@@ -403,7 +403,7 @@ void ModEnvelopeEditor::setPointTime (Lane lane, int index, float timeSeconds)
 
 void ModEnvelopeEditor::setPointValue (Lane lane, int index, float value)
 {
-    if (index == 0 && lane != Lane::cutoff)
+    if (index == 0 && lane == Lane::width)
     {
         ModEnvelopeParamIds::setKnobValue (lane, apvts, value);
         return;

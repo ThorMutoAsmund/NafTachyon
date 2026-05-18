@@ -606,7 +606,11 @@ float NafTachyonAudioProcessor::getVoiceAmplitudeForRelease (const OscillatorVoi
                              / static_cast<float> (currentSampleRate);
 
     if (modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::amplitude, apvts))
-        return modulationEnvelope.evaluate (noteOnElapsed, voice.modKnobSnapshot).amplitude;
+    {
+        auto knobSnapshot = voice.modKnobSnapshot;
+        knobSnapshot.amplitude = apvts.getRawParameterValue (amplitudeParamId)->load();
+        return modulationEnvelope.evaluate (noteOnElapsed, knobSnapshot).amplitude;
+    }
 
     return apvts.getRawParameterValue (amplitudeParamId)->load();
 }
@@ -790,8 +794,20 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                                           / static_cast<float> (currentSampleRate);
                 auto knobSnapshot = voice.modKnobSnapshot;
 
+                if (shapeModEnabled)
+                    knobSnapshot.shape = waveformMorphKnob;
+
+                if (overtonesModEnabled)
+                    knobSnapshot.overtones = overtonesKnob;
+
                 if (cutoffModEnabled)
                     knobSnapshot.cutoffHz = cutoffKnob;
+
+                if (resonanceModEnabled)
+                    knobSnapshot.resonance = resonanceKnob;
+
+                if (amplitudeModEnabled)
+                    knobSnapshot.amplitude = amplitudeKnob;
 
                 const auto modParams = modulationEnvelope.evaluate (elapsedSeconds, knobSnapshot);
 
