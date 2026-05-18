@@ -1,8 +1,8 @@
 # V1.3.0
-- Evolve lanes (when on) modulate knob baseline
+- Evolve lanes modulate knob baseline
 - Increase available points on evolve lanes to 12
 - Evolve lane loop option (locks level of last point)
-
+- Velocity sensitivity on amplitude and cutoff
 
 # V1.2.0
 - Fixed bug: Pulse width weird at ends
@@ -36,7 +36,6 @@
 
 # Future ideas
 - Problem when recording automation: (Den opretter kurver for mange parametre på en gang. Den skal kun oprette een for den parameter man justerer. )
-- Velocity to cutoff
 
 ```
 class BetterSlider : public Slider
