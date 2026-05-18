@@ -19,7 +19,7 @@ namespace
     constexpr LaneDefinition laneDefinitions[ModulationEnvelope::numLanes] =
     {
         { "modShape",     1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on shape knob
-        { "modWidth",     0.0f,     -1.0f,      1.0f,      0.0f,  false },
+        { "modWidth",     0.0f,     -1.0f,      1.0f,      0.0f,  false }, // offset added to width knob
         { "modOvertones", 1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on harmonics knob
         { "modCutoff",    1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on cutoff knob
         { "modResonance", 1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on resonance knob
@@ -51,6 +51,11 @@ namespace
         }
 
         return false;
+    }
+
+    bool isKnobOffsetLane (ModulationEnvelope::Lane lane)
+    {
+        return lane == ModulationEnvelope::Lane::width;
     }
 }
 
@@ -193,6 +198,8 @@ void ModulationEnvelope::updateFromApvts (juce::AudioProcessorValueTreeState& ap
 
             if (isKnobMultiplierLane (lane) && (value > 1.0f || value < 0.0f))
                 value = 1.0f;
+            else if (isKnobOffsetLane (lane))
+                value = juce::jlimit (-1.0f, 1.0f, value);
 
             point.value = value;
         }
@@ -303,13 +310,7 @@ void ModEnvelopeParamIds::syncFirstPointFromKnob (ModulationEnvelope::Lane lane,
 
 void ModEnvelopeParamIds::syncAllFirstPointsFromKnobs (juce::AudioProcessorValueTreeState& apvts)
 {
-    for (int laneIndex = 0; laneIndex < ModulationEnvelope::numLanes; ++laneIndex)
-    {
-        const auto lane = static_cast<ModulationEnvelope::Lane> (laneIndex);
-
-        if (! isKnobMultiplierLane (lane))
-            syncFirstPointFromKnob (lane, apvts);
-    }
+    juce::ignoreUnused (apvts);
 }
 
 float ModulationEnvelope::interpolateLaneAbsolute (const ModLaneEnvelope& lane, float elapsedSeconds)
@@ -372,7 +373,8 @@ ModulatedParams ModulationEnvelope::evaluate (float elapsedSeconds, const ModKno
     ModulatedParams result;
     const auto shapeMultiplier = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::shape)], elapsedSeconds);
     result.shape = juce::jlimit (0.0f, 1.0f, knobSnapshot.shape * shapeMultiplier);
-    result.pulseWidth = interpolateLane (lanes[static_cast<size_t> (Lane::width)], elapsedSeconds, knobSnapshot.pulseWidth);
+    const auto widthOffset = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::width)], elapsedSeconds);
+    result.pulseWidth = juce::jlimit (-1.0f, 1.0f, knobSnapshot.pulseWidth + widthOffset);
     const auto overtonesMultiplier = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::overtones)], elapsedSeconds);
     result.overtones = juce::jlimit (0.0f, 1.0f, knobSnapshot.overtones * overtonesMultiplier);
     const auto cutoffMultiplier = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::cutoff)], elapsedSeconds);

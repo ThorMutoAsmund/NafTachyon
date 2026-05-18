@@ -797,6 +797,9 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 if (shapeModEnabled)
                     knobSnapshot.shape = waveformMorphKnob;
 
+                if (widthModEnabled)
+                    knobSnapshot.pulseWidth = pulseWidthKnob;
+
                 if (overtonesModEnabled)
                     knobSnapshot.overtones = overtonesKnob;
 
