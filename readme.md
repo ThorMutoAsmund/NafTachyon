@@ -1,5 +1,5 @@
 
-# V1.2
+# V1.2.0
 - Pulse width weird at ends
 - Aliasing at high notes
 - Mod wheel changes vibrato
@@ -11,7 +11,7 @@
 - Remove detune 1 voice
 - Evolve dropdown -> buttons
 
-# V1.1
+# V1.1.0
 - Improve resonance dial to value mapping
 - Improve curves in evolve section to be exponential
 - Log time in evolve lanes
@@ -34,13 +34,12 @@
 - Problem when recording automation: (Den opretter kurver for mange parametre på en gang. Den skal kun oprette een for den parameter man justerer. )
 - Velocity to cutoff
 
-
-
-
-> class BetterSlider : public Slider
-> {
->     this->onDragStart = [&]
->     {
->         this->setMouseDragSensitivity(ModifierKeys::currentModifiers.isCtrlDown() ? 2500 : 250);
->     };
-> }
+```
+class BetterSlider : public Slider
+{
+    this->onDragStart = [&]
+    {
+        this->setMouseDragSensitivity(ModifierKeys::currentModifiers.isCtrlDown() ? 2500 : 250);
+    };
+}
+```
