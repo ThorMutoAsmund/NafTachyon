@@ -1,3 +1,9 @@
+# V1.3.0
+
+|Lanes|Formula|Why|
+|-----|-----|-----|
+|Shape, Width, Harmonics, Resonance|knob + (curve(t) − curve(t₀))|Bipolar/unipolar offsets; knob is the manual center|
+|Cutoff, Amplitude|knob × (curve(t) / curve(t₀))|Level × envelope; cutoff scales proportionally in Hz|
 
 # V1.2.0
 - Fixed bug: Pulse width weird at ends

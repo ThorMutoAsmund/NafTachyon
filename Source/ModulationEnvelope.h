@@ -73,6 +73,8 @@ public:
     float getSegmentCurve (Lane lane, int segmentIndex) const;
 
 private:
+    static float interpolateLaneAbsolute (const ModLaneEnvelope& lane, float elapsedSeconds);
+
     static float interpolateLane (const ModLaneEnvelope& lane, float elapsedSeconds, float startValue);
 
     ModLaneEnvelope lanes[numLanes];

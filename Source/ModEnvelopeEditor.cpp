@@ -302,15 +302,10 @@ float ModEnvelopeEditor::laneToNormalized (Lane lane, float value) const
         case Lane::overtones:
         case Lane::resonance:
         case Lane::amplitude:
+        case Lane::cutoff:
             return juce::jlimit (0.0f, 1.0f, value);
         case Lane::width:
             return juce::jlimit (0.0f, 1.0f, (value + 1.0f) * 0.5f);
-        case Lane::cutoff:
-        {
-            const auto logMin = std::log (20.0f);
-            const auto logMax = std::log (20000.0f);
-            return juce::jlimit (0.0f, 1.0f, (std::log (value) - logMin) / (logMax - logMin));
-        }
     }
 
     return 0.0f;
@@ -326,15 +321,10 @@ float ModEnvelopeEditor::normalizedToLane (Lane lane, float normalized) const
         case Lane::overtones:
         case Lane::resonance:
         case Lane::amplitude:
+        case Lane::cutoff:
             return normalized;
         case Lane::width:
             return normalized * 2.0f - 1.0f;
-        case Lane::cutoff:
-        {
-            const auto logMin = std::log (20.0f);
-            const auto logMax = std::log (20000.0f);
-            return std::exp (juce::jmap (normalized, logMin, logMax));
-        }
     }
 
     return 0.0f;
@@ -399,7 +389,7 @@ float ModEnvelopeEditor::yToNormalized (float y, juce::Rectangle<float> graph) c
 
 float ModEnvelopeEditor::getPointValue (Lane lane, int index) const
 {
-    if (index == 0)
+    if (index == 0 && lane != Lane::cutoff)
         return ModEnvelopeParamIds::readKnobValue (lane, apvts);
 
     return apvts.getRawParameterValue (ModEnvelopeParamIds::pointValue (lane, index))->load();
@@ -413,7 +403,7 @@ void ModEnvelopeEditor::setPointTime (Lane lane, int index, float timeSeconds)
 
 void ModEnvelopeEditor::setPointValue (Lane lane, int index, float value)
 {
-    if (index == 0)
+    if (index == 0 && lane != Lane::cutoff)
     {
         ModEnvelopeParamIds::setKnobValue (lane, apvts, value);
         return;

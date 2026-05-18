@@ -21,7 +21,7 @@ namespace
         { "modShape",     0.0f,      0.0f,      1.0f,      0.0f,  false },
         { "modWidth",     0.0f,     -1.0f,      1.0f,      0.0f,  false },
         { "modOvertones", 0.0f,      0.0f,      1.0f,      0.0f,  false },
-        { "modCutoff",    20000.0f, 20.0f,  20000.0f,      0.3f,  true  },
+        { "modCutoff",    1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on cutoff knob
         { "modResonance", 0.0f,      0.0f,      1.0f,      0.0f,  false },
         { "modAmplitude", 1.0f,      0.0f,      1.0f,      0.0f,  false },
     };
@@ -172,7 +172,15 @@ void ModulationEnvelope::updateFromApvts (juce::AudioProcessorValueTreeState& ap
         {
             auto& point = laneEnvelope.points[i];
             point.timeSeconds = apvts.getRawParameterValue (ModEnvelopeParamIds::pointTime (lane, i))->load();
-            point.value = apvts.getRawParameterValue (ModEnvelopeParamIds::pointValue (lane, i))->load();
+            auto value = apvts.getRawParameterValue (ModEnvelopeParamIds::pointValue (lane, i))->load();
+
+            if (lane == Lane::cutoff)
+            {
+                if (value > 1.0f || value < 0.0f)
+                    value = 1.0f;
+            }
+
+            point.value = value;
         }
 
         for (int seg = 0; seg < maxSegments; ++seg)
@@ -282,7 +290,39 @@ void ModEnvelopeParamIds::syncFirstPointFromKnob (ModulationEnvelope::Lane lane,
 void ModEnvelopeParamIds::syncAllFirstPointsFromKnobs (juce::AudioProcessorValueTreeState& apvts)
 {
     for (int laneIndex = 0; laneIndex < ModulationEnvelope::numLanes; ++laneIndex)
-        syncFirstPointFromKnob (static_cast<ModulationEnvelope::Lane> (laneIndex), apvts);
+    {
+        const auto lane = static_cast<ModulationEnvelope::Lane> (laneIndex);
+
+        if (lane != ModulationEnvelope::Lane::cutoff)
+            syncFirstPointFromKnob (lane, apvts);
+    }
+}
+
+float ModulationEnvelope::interpolateLaneAbsolute (const ModLaneEnvelope& lane, float elapsedSeconds)
+{
+    const auto& first = lane.points[0];
+
+    if (lane.numPoints <= 1 || elapsedSeconds <= first.timeSeconds)
+        return first.value;
+
+    const auto& last = lane.points[static_cast<size_t> (lane.numPoints - 1)];
+
+    if (elapsedSeconds >= last.timeSeconds)
+        return last.value;
+
+    for (int i = 0; i < lane.numPoints - 1; ++i)
+    {
+        const auto& a = lane.points[static_cast<size_t> (i)];
+        const auto& b = lane.points[static_cast<size_t> (i + 1)];
+
+        if (elapsedSeconds >= a.timeSeconds && elapsedSeconds < b.timeSeconds)
+        {
+            const auto curve = lane.segmentCurves[static_cast<size_t> (i)];
+            return sampleSegment (a.timeSeconds, a.value, b.timeSeconds, b.value, elapsedSeconds, curve);
+        }
+    }
+
+    return last.value;
 }
 
 float ModulationEnvelope::interpolateLane (const ModLaneEnvelope& lane, float elapsedSeconds, float startValue)
@@ -319,7 +359,8 @@ ModulatedParams ModulationEnvelope::evaluate (float elapsedSeconds, const ModKno
     result.shape = interpolateLane (lanes[static_cast<size_t> (Lane::shape)], elapsedSeconds, knobSnapshot.shape);
     result.pulseWidth = interpolateLane (lanes[static_cast<size_t> (Lane::width)], elapsedSeconds, knobSnapshot.pulseWidth);
     result.overtones = interpolateLane (lanes[static_cast<size_t> (Lane::overtones)], elapsedSeconds, knobSnapshot.overtones);
-    result.cutoffHz = interpolateLane (lanes[static_cast<size_t> (Lane::cutoff)], elapsedSeconds, knobSnapshot.cutoffHz);
+    const auto cutoffMultiplier = interpolateLaneAbsolute (lanes[static_cast<size_t> (Lane::cutoff)], elapsedSeconds);
+    result.cutoffHz = juce::jlimit (20.0f, 20000.0f, knobSnapshot.cutoffHz * cutoffMultiplier);
     result.resonance = interpolateLane (lanes[static_cast<size_t> (Lane::resonance)], elapsedSeconds, knobSnapshot.resonance);
     result.amplitude = interpolateLane (lanes[static_cast<size_t> (Lane::amplitude)], elapsedSeconds, knobSnapshot.amplitude);
     return result;

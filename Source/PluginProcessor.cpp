@@ -788,7 +788,12 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             {
                 const auto elapsedSeconds = static_cast<float> (globalSampleCounter + sample - voice.noteOnSample)
                                           / static_cast<float> (currentSampleRate);
-                const auto modParams = modulationEnvelope.evaluate (elapsedSeconds, voice.modKnobSnapshot);
+                auto knobSnapshot = voice.modKnobSnapshot;
+
+                if (cutoffModEnabled)
+                    knobSnapshot.cutoffHz = cutoffKnob;
+
+                const auto modParams = modulationEnvelope.evaluate (elapsedSeconds, knobSnapshot);
 
                 if (shapeModEnabled)
                     waveformMorph = modParams.shape;
