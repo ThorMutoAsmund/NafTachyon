@@ -135,6 +135,20 @@ private:
 
     };
 
+    enum class FilterLimiterMode
+
+    {
+
+        off = 0,
+
+        light,
+
+        normal,
+
+        tight
+
+    };
+
     static constexpr int maxUnisonStack = 5;
 
     struct OscillatorVoice
@@ -186,11 +200,27 @@ private:
 
         float biquad2Z2 = 0.0f;
 
+        float limiterEnvelope = 0.0f;
+
         ModKnobSnapshot modKnobSnapshot;
 
     };
 
 
+
+    struct FilterLimiterCoeffs
+
+    {
+
+        bool active = false;
+
+        float ceiling = 1.0f;
+
+        float attackCoeff = 0.0f;
+
+        float releaseCoeff = 0.0f;
+
+    };
 
     struct FilterCoefficients
 
@@ -236,6 +266,10 @@ private:
     FilterCoefficients makeFilterCoefficients (float cutoffHz, float resonance, FilterSlope slope) const;
 
     float filterSample (float input, OscillatorVoice& voice, const FilterCoefficients& coeffs, FilterSlope slope) const;
+
+    float applyFilterLimiter (float sample, OscillatorVoice& voice, const FilterLimiterCoeffs& coeffs) const;
+
+    FilterLimiterCoeffs makeFilterLimiterCoeffs (FilterLimiterMode mode) const;
 
     void updateDcHighpassCoefficients();
     void resetDcHighpassState();

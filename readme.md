@@ -4,7 +4,11 @@
 - Evolve lane loop option (locks level of last point)
 - Add velocity sensitivity on amplitude and cutoff
 - Improve slider fine control
--  s / Bar toggle on the evolve toolbar
+- s / Bar toggle on the evolve toolbar
+- 0.5 s / bar vertical lines
+- Evolve lane points snap to vertical lines when Ctrl is held down
+- Change amplitude to Gain and show in dB
+- Added optional limiter after the filter section
 
 # V1.2.0
 - Fixed bug: Pulse width weird at ends
@@ -39,8 +43,6 @@
 - Amplitude knob -> sound in dB. Alternatively a Gain knob
 - Limiter in filter section (must be possible to disable). Each voice can be detuned between 0% and 100%. 100% = one semitone
 - Better Unison/Detune (look at Vital)
-- Evolve line using bars instead of seconds and sync with DAW
-- Evolve line snap to grid (with ctrl?)
 - More than one oscillator
 - Random amplitude option (between two values)
 - Granulizer. Perhaps just how long the grain should be and how often to play it

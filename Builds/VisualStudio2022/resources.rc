@@ -18,9 +18,9 @@ BEGIN
       VALUE "CompanyName",  "TMA Research\0"
       VALUE "LegalCopyright",  "Thor Muto Asmund (2026)\0"
       VALUE "FileDescription",  "Nafai's Tachyon\0"
-      VALUE "FileVersion",  "1.2.0\0"
+      VALUE "FileVersion",  "1.3.0\0"
       VALUE "ProductName",  "Nafai's Tachyon\0"
-      VALUE "ProductVersion",  "1.2.0\0"
+      VALUE "ProductVersion",  "1.3.0\0"
     END
   END
 

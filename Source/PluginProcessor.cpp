@@ -19,6 +19,7 @@ namespace
     constexpr auto filterCutoffParamId  = "filterCutoff";
     constexpr auto filterResonanceParamId = "filterResonance";
     constexpr auto filterSlopeParamId   = "filterSlope";
+    constexpr auto filterLimiterParamId = "filterLimiter";
     constexpr auto overtonesParamId     = "overtones";
     constexpr auto pulseWidthParamId  = "pulseWidth";
     constexpr auto unisonParamId        = "unison";
@@ -277,6 +278,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
         juce::StringArray { "6 dB", "12 dB", "24 dB" },
         0));
 
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { filterLimiterParamId, 1 },
+        "Filter limiter",
+        juce::StringArray { "Off", "Light", "Normal", "Tight" },
+        2));
+
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { unisonParamId, 1 },
         "Voices",
@@ -502,6 +509,7 @@ void NafTachyonAudioProcessor::resetVoiceFilter (OscillatorVoice& voice)
     voice.biquad1Z2 = 0.0f;
     voice.biquad2Z1 = 0.0f;
     voice.biquad2Z2 = 0.0f;
+    voice.limiterEnvelope = 0.0f;
 }
 
 void NafTachyonAudioProcessor::resetUnisonPhases (OscillatorVoice& voice)
@@ -611,6 +619,69 @@ float NafTachyonAudioProcessor::filterSample (float input,
         sample = processBiquad (sample, voice.biquad2Z1, voice.biquad2Z2);
 
     return sample;
+}
+
+NafTachyonAudioProcessor::FilterLimiterCoeffs NafTachyonAudioProcessor::makeFilterLimiterCoeffs (FilterLimiterMode mode) const
+{
+    FilterLimiterCoeffs coeffs;
+
+    float ceiling = 1.0f;
+    float attackMs = 2.0f;
+    float releaseMs = 80.0f;
+
+    switch (mode)
+    {
+        case FilterLimiterMode::light:
+            ceiling = 0.55f;
+            attackMs = 3.0f;
+            releaseMs = 110.0f;
+            break;
+        case FilterLimiterMode::normal:
+            ceiling = 0.4f;
+            attackMs = 1.5f;
+            releaseMs = 75.0f;
+            break;
+        case FilterLimiterMode::tight:
+            ceiling = 0.28f;
+            attackMs = 0.8f;
+            releaseMs = 55.0f;
+            break;
+        case FilterLimiterMode::off:
+            return coeffs;
+    }
+
+    coeffs.active = true;
+    coeffs.ceiling = ceiling;
+
+    const auto attackSamples = static_cast<float> (attackMs * 0.001 * currentSampleRate);
+    const auto releaseSamples = static_cast<float> (releaseMs * 0.001 * currentSampleRate);
+    coeffs.attackCoeff = attackSamples > 1.0f ? std::exp (-1.0f / attackSamples) : 0.0f;
+    coeffs.releaseCoeff = releaseSamples > 1.0f ? std::exp (-1.0f / releaseSamples) : 0.0f;
+
+    return coeffs;
+}
+
+float NafTachyonAudioProcessor::applyFilterLimiter (float sample,
+                                                    OscillatorVoice& voice,
+                                                    const FilterLimiterCoeffs& coeffs) const
+{
+    if (! coeffs.active)
+        return sample;
+
+    const auto magnitude = std::abs (sample);
+
+    if (magnitude > voice.limiterEnvelope)
+        voice.limiterEnvelope = coeffs.attackCoeff * voice.limiterEnvelope + (1.0f - coeffs.attackCoeff) * magnitude;
+    else
+        voice.limiterEnvelope = coeffs.releaseCoeff * voice.limiterEnvelope + (1.0f - coeffs.releaseCoeff) * magnitude;
+
+    constexpr auto epsilon = 1.0e-6f;
+    auto gain = 1.0f;
+
+    if (voice.limiterEnvelope > coeffs.ceiling)
+        gain = coeffs.ceiling / (voice.limiterEnvelope + epsilon);
+
+    return sample * gain;
 }
 
 void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
@@ -797,6 +868,9 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     const auto filterSlopeIndex = juce::jlimit (0, 2, static_cast<int> (std::round (apvts.getRawParameterValue (filterSlopeParamId)->load())));
     const auto filterSlope = static_cast<FilterSlope> (filterSlopeIndex);
+    const auto filterLimiterIndex = juce::jlimit (0, 3, static_cast<int> (std::round (apvts.getRawParameterValue (filterLimiterParamId)->load())));
+    const auto filterLimiterMode = static_cast<FilterLimiterMode> (filterLimiterIndex);
+    const auto filterLimiterCoeffs = makeFilterLimiterCoeffs (filterLimiterMode);
     const auto releaseTimeSeconds = apvts.getRawParameterValue (releaseTimeParamId)->load();
 
     for (const auto metadata : midiMessages)
@@ -973,7 +1047,9 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
             const auto filterCoeffs = makeFilterCoefficients (cutoffHz, resonance, filterSlope);
 
-            outputSample += filterSample (oscSample, voice, filterCoeffs, filterSlope);
+            auto filteredSample = filterSample (oscSample, voice, filterCoeffs, filterSlope);
+            filteredSample = applyFilterLimiter (filteredSample, voice, filterLimiterCoeffs);
+            outputSample += filteredSample;
 
             if (unisonSettings.count <= 1)
             {

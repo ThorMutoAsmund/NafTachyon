@@ -161,7 +161,22 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureKnob (filterGroup, cutoffVelSensitivitySlider, cutoffVelSensitivityLabel, "Cutoff velocity");
 
-    configureFilterSlopeControl (filterGroup);
+    configureFilterComboControl (filterSlopeCombo, filterSlopeLabel, "Slope");
+    filterGroup.addAndMakeVisible (filterSlopeCombo);
+    filterGroup.addAndMakeVisible (filterSlopeLabel);
+
+    configureFilterComboControl (filterLimiterCombo, filterLimiterLabel, "Limiter");
+    filterGroup.addAndMakeVisible (filterLimiterCombo);
+    filterGroup.addAndMakeVisible (filterLimiterLabel);
+
+    filterSlopeCombo.addItem ("6 dB",  1);
+    filterSlopeCombo.addItem ("12 dB", 2);
+    filterSlopeCombo.addItem ("24 dB", 3);
+
+    filterLimiterCombo.addItem ("Off", 1);
+    filterLimiterCombo.addItem ("Light", 2);
+    filterLimiterCombo.addItem ("Normal", 3);
+    filterLimiterCombo.addItem ("Tight", 4);
 
     configureKnob (unisonGroup, unisonSlider, unisonLabel, "Voices");
     configureKnob (unisonGroup, unisonSpreadSlider, unisonSpreadLabel, "Amount");
@@ -192,6 +207,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     filterSlopeAttachment = std::make_unique<ComboBoxAttachment> (apvts, "filterSlope", filterSlopeCombo);
 
+    filterLimiterAttachment = std::make_unique<ComboBoxAttachment> (apvts, "filterLimiter", filterLimiterCombo);
+
     unisonAttachment       = std::make_unique<SliderAttachment> (apvts, "unison", unisonSlider);
     unisonSpreadAttachment = std::make_unique<SliderAttachment> (apvts, "unisonSpread", unisonSpreadSlider);
 
@@ -211,36 +228,18 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
 
 
-void NafTachyonAudioProcessorEditor::configureFilterSlopeControl (juce::Component& parent)
-
+void NafTachyonAudioProcessorEditor::configureFilterComboControl (juce::ComboBox& combo,
+                                                                  juce::Label& label,
+                                                                  const juce::String& labelText)
 {
+    combo.setWantsKeyboardFocus (false);
+    combo.setMouseClickGrabsKeyboardFocus (false);
+    combo.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff1a2024));
+    combo.setColour (juce::ComboBox::textColourId, juce::Colour (0xffc8d0d6));
+    combo.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff323a40));
+    combo.setColour (juce::ComboBox::arrowColourId, juce::Colour (0xffff8c1a));
 
-    filterSlopeCombo.addItem ("6 dB",  1);
-
-    filterSlopeCombo.addItem ("12 dB", 2);
-
-    filterSlopeCombo.addItem ("24 dB", 3);
-
-    filterSlopeCombo.setWantsKeyboardFocus (false);
-
-    filterSlopeCombo.setMouseClickGrabsKeyboardFocus (false);
-
-    filterSlopeCombo.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff1a2024));
-
-    filterSlopeCombo.setColour (juce::ComboBox::textColourId, juce::Colour (0xffc8d0d6));
-
-    filterSlopeCombo.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff323a40));
-
-    filterSlopeCombo.setColour (juce::ComboBox::arrowColourId, juce::Colour (0xffff8c1a));
-
-    parent.addAndMakeVisible (filterSlopeCombo);
-
-
-
-    configureSectionLabel (filterSlopeLabel, "Slope");
-
-    parent.addAndMakeVisible (filterSlopeLabel);
-
+    configureSectionLabel (label, labelText);
 }
 
 
@@ -400,11 +399,12 @@ void NafTachyonAudioProcessorEditor::layoutFilterControls (juce::Rectangle<int> 
 
 
 
-    auto slopeArea = area.reduced (8, 4);
-
-    slopeArea.removeFromTop (8);
-
-    filterSlopeCombo.setBounds (slopeArea.removeFromTop (26));
+    auto comboColumn = area.reduced (8, 4);
+    comboColumn.removeFromTop (4);
+    filterSlopeCombo.setBounds (comboColumn.removeFromTop (24));
+    comboColumn.removeFromTop (6);
+    filterLimiterLabel.setBounds (comboColumn.removeFromTop (labelRowHeight));
+    filterLimiterCombo.setBounds (comboColumn.removeFromTop (24));
 
 }
 

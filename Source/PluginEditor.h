@@ -59,7 +59,7 @@ private:
 
     void configureKnob (juce::Component& parent, juce::Slider& slider, juce::Label& label, const juce::String& text);
 
-    void configureFilterSlopeControl (juce::Component& parent);
+    void configureFilterComboControl (juce::ComboBox& combo, juce::Label& label, const juce::String& labelText);
 
     static void setComponentIgnoresKeyboard (juce::Component& component);
 
@@ -141,7 +141,11 @@ private:
 
     juce::ComboBox filterSlopeCombo;
 
+    juce::ComboBox filterLimiterCombo;
+
     juce::Label filterSlopeLabel;
+
+    juce::Label filterLimiterLabel;
 
     NafTachyonKnob unisonSlider;
     NafTachyonKnob unisonSpreadSlider;
@@ -176,6 +180,8 @@ private:
     std::unique_ptr<SliderAttachment> cutoffVelSensitivityAttachment;
 
     std::unique_ptr<ComboBoxAttachment> filterSlopeAttachment;
+
+    std::unique_ptr<ComboBoxAttachment> filterLimiterAttachment;
 
     std::unique_ptr<SliderAttachment> unisonAttachment;
     std::unique_ptr<SliderAttachment> unisonSpreadAttachment;
