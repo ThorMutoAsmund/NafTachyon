@@ -2,7 +2,8 @@
 - Evolve lanes modulate knob baseline
 - Increase available points on evolve lanes to 12
 - Evolve lane loop option (locks level of last point)
-- Velocity sensitivity on amplitude and cutoff
+- Add velocity sensitivity on amplitude and cutoff
+- Improve slider fine control
 
 # V1.2.0
 - Fixed bug: Pulse width weird at ends
@@ -33,16 +34,16 @@
 - Wave graph
 - Unison
 
-
 # Future ideas
-- Problem when recording automation: (Den opretter kurver for mange parametre på en gang. Den skal kun oprette een for den parameter man justerer. )
+- Amplitude knob -> sound in dB. Alternatively a Gain knob
+- Limiter in filter section (must be possible to disable). Each voice can be detuned between 0% and 100%. 100% = one semitone
+- Better Unison/Detune (look at Vital)
+- Evolve line using bars instead of seconds and sync with DAW
+- Evolve line snap to grid (with ctrl?)
+- More than one oscillator
+- Random amplitude option (between two values)
+- Granulizer. Perhaps just how long the grain should be and how often to play it
 
-```
-class BetterSlider : public Slider
-{
-    this->onDragStart = [&]
-    {
-        this->setMouseDragSensitivity(ModifierKeys::currentModifiers.isCtrlDown() ? 2500 : 250);
-    };
-}
-```
+
+# To do
+- Other plugins up

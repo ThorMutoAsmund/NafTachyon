@@ -18,6 +18,8 @@
             file="Source/NafTachyonLookAndFeel.cpp"/>
       <FILE id="ntLfH2" name="NafTachyonLookAndFeel.h" compile="0" resource="0"
             file="Source/NafTachyonLookAndFeel.h"/>
+      <FILE id="ntKnob1" name="NafTachyonKnob.h" compile="0" resource="0"
+            file="Source/NafTachyonKnob.h"/>
       <FILE id="secPn1" name="SectionPanel.cpp" compile="1" resource="0"
             file="Source/SectionPanel.cpp"/>
       <FILE id="secPn2" name="SectionPanel.h" compile="0" resource="0"

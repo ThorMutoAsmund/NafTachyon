@@ -23,6 +23,7 @@
 #include "PluginProcessor.h"
 
 #include "NafTachyonLookAndFeel.h"
+#include "NafTachyonKnob.h"
 
 #include "SectionPanel.h"
 #include "WaveformPreview.h"
@@ -98,11 +99,11 @@ private:
 
 
 
-    juce::Slider amplitudeSlider;
+    NafTachyonKnob amplitudeSlider;
 
-    juce::Slider releaseTimeSlider;
+    NafTachyonKnob releaseTimeSlider;
 
-    juce::Slider amplitudeVelSensitivitySlider;
+    NafTachyonKnob amplitudeVelSensitivitySlider;
 
     juce::Label amplitudeLabel;
 
@@ -112,11 +113,11 @@ private:
 
 
 
-    juce::Slider waveformSlider;
+    NafTachyonKnob waveformSlider;
 
-    juce::Slider pulseWidthSlider;
+    NafTachyonKnob pulseWidthSlider;
 
-    juce::Slider overtonesSlider;
+    NafTachyonKnob overtonesSlider;
 
     juce::Label waveformLabel;
 
@@ -130,9 +131,9 @@ private:
 
 
 
-    juce::Slider cutoffSlider, resonanceSlider;
+    NafTachyonKnob cutoffSlider, resonanceSlider;
 
-    juce::Slider cutoffVelSensitivitySlider;
+    NafTachyonKnob cutoffVelSensitivitySlider;
 
     juce::Label cutoffLabel, resonanceLabel;
 
@@ -142,8 +143,8 @@ private:
 
     juce::Label filterSlopeLabel;
 
-    juce::Slider unisonSlider;
-    juce::Slider unisonSpreadSlider;
+    NafTachyonKnob unisonSlider;
+    NafTachyonKnob unisonSpreadSlider;
 
     juce::Label unisonLabel;
     juce::Label unisonSpreadLabel;
