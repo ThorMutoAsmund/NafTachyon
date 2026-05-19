@@ -26,7 +26,20 @@ namespace
     constexpr auto amplitudeVelSensitivityParamId = "amplitudeVelSensitivity";
     constexpr auto cutoffVelSensitivityParamId    = "cutoffVelSensitivity";
 
+    constexpr float gainMinDb = -60.0f;
+    constexpr float gainMaxDb = 6.0f;
+    constexpr float gainMinLinear = 0.001f;
+    const float gainMaxLinear = juce::Decibels::decibelsToGain (gainMaxDb);
+
     constexpr float maxCutoffVelocityOctaves = 4.0f;
+
+    juce::String linearGainToDbString (float linearGain, int)
+    {
+        if (linearGain <= gainMinLinear * 1.01f)
+            return juce::String (gainMinDb, 0) + " dB";
+
+        return juce::String (juce::Decibels::gainToDecibels (linearGain), 1) + " dB";
+    }
 
     void computeVoiceVelocityScales (float velocityNorm,
                                      float ampVelSensitivity,
@@ -171,12 +184,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { amplitudeParamId, 1 },
-        "Amplitude",
-        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
-        1.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("")));
+    {
+        juce::NormalisableRange<float> gainRange { gainMinLinear, gainMaxLinear };
+        gainRange.setSkewForCentre (1.0f);
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { amplitudeParamId, 1 },
+            "Gain",
+            gainRange,
+            1.0f,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction (linearGainToDbString)));
+    }
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { amplitudeVelSensitivityParamId, 1 },

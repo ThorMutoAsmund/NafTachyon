@@ -135,7 +135,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
 
 
-    configureKnob (mainGroup, amplitudeSlider, amplitudeLabel, "Amplitude");
+    configureKnob (mainGroup, amplitudeSlider, amplitudeLabel, "Gain");
 
     configureKnob (mainGroup, releaseTimeSlider, releaseTimeLabel, "Release Time");
 

@@ -442,6 +442,7 @@ ModulatedParams ModulationEnvelope::evaluate (float elapsedSeconds, const ModKno
 
     const auto& amplitudeLane = lanes[static_cast<size_t> (Lane::amplitude)];
     const auto amplitudeMultiplier = interpolateLaneAbsolute (amplitudeLane, elapsedSeconds, amplitudeLane.loopEnabled);
-    result.amplitude = juce::jlimit (0.0f, 1.0f, knobSnapshot.amplitude * amplitudeMultiplier);
+    const auto maxGainLinear = juce::Decibels::decibelsToGain (6.0f);
+    result.amplitude = juce::jlimit (0.0f, maxGainLinear, knobSnapshot.amplitude * amplitudeMultiplier);
     return result;
 }
