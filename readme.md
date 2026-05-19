@@ -40,8 +40,6 @@
 - Unison
 
 # Future ideas
-- Amplitude knob -> sound in dB. Alternatively a Gain knob
-- Limiter in filter section (must be possible to disable). Each voice can be detuned between 0% and 100%. 100% = one semitone
 - Better Unison/Detune (look at Vital)
 - More than one oscillator
 - Random amplitude option (between two values)
