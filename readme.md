@@ -4,6 +4,7 @@
 - Evolve lane loop option (locks level of last point)
 - Add velocity sensitivity on amplitude and cutoff
 - Improve slider fine control
+-  s / Bar toggle on the evolve toolbar
 
 # V1.2.0
 - Fixed bug: Pulse width weird at ends
@@ -43,7 +44,6 @@
 - More than one oscillator
 - Random amplitude option (between two values)
 - Granulizer. Perhaps just how long the grain should be and how often to play it
-
 
 # To do
 - Other plugins up

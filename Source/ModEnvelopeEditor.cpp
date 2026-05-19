@@ -14,18 +14,10 @@ namespace
     constexpr int laneStripWidth = 82;
     constexpr int numLaneStripRows = 6;
 
-    /** Logarithmic display: proportion = log(1 + t) / log(1 + max). t = 0 stays at the left edge. */
-    float timeToDisplayProportion (float timeSeconds)
-    {
-        timeSeconds = juce::jlimit (0.0f, graphTimeMaxSeconds, timeSeconds);
-        return std::log (1.0f + timeSeconds) / std::log (1.0f + graphTimeMaxSeconds);
-    }
+    const juce::Colour majorVerticalGridColour { 0xff2a3238 };
+    const juce::Colour minorVerticalGridColour { 0xff252d33 };
 
-    float displayProportionToTime (float proportion)
-    {
-        proportion = juce::jlimit (0.0f, 1.0f, proportion);
-        return std::exp (proportion * std::log (1.0f + graphTimeMaxSeconds)) - 1.0f;
-    }
+    constexpr float verticalGridSnapDistancePx = 8.0f;
 
     constexpr ModulationEnvelope::Lane laneSelectorOrder[] =
     {
@@ -41,10 +33,82 @@ namespace
     {
         return laneSelectorOrder[juce::jlimit (0, numLaneStripRows - 1, rowIndex)];
     }
+
+    void drawDottedVerticalGridLine (juce::Graphics& g,
+                                     float x,
+                                     float yTop,
+                                     float yBottom,
+                                     juce::Colour colour)
+    {
+        constexpr float dashLength = 4.0f;
+        constexpr float gapLength = 3.0f;
+        const auto xInt = juce::roundToInt (x);
+        const auto yStart = juce::roundToInt (yTop);
+        const auto yEnd = juce::roundToInt (yBottom);
+
+        if (yEnd <= yStart)
+            return;
+
+        g.setColour (colour);
+
+        for (int y = yStart; y < yEnd; y += juce::roundToInt (dashLength + gapLength))
+        {
+            const auto dashEnd = juce::jmin (y + juce::roundToInt (dashLength), yEnd);
+            g.drawLine (static_cast<float> (xInt), static_cast<float> (y),
+                        static_cast<float> (xInt), static_cast<float> (dashEnd), 1.0f);
+        }
+    }
+
+    template <typename Fn>
+    void forEachHalfStepGridTimeSeconds (Fn&& fn)
+    {
+        for (float t = 0.5f; t <= graphTimeMaxSeconds + 0.001f; t += 1.0f)
+            fn (t);
+    }
+
+    template <typename Fn>
+    void forEachWholeStepGridTimeSeconds (Fn&& fn)
+    {
+        for (int second = 1; second <= juce::roundToInt (graphTimeMaxSeconds); ++second)
+            fn (static_cast<float> (second));
+    }
+
+    template <typename Fn>
+    void forEachHalfStepGridTimeBars (float secondsPerBar, Fn&& fn)
+    {
+        for (float bars = 0.5f; bars * secondsPerBar <= graphTimeMaxSeconds + 0.001f; bars += 1.0f)
+            fn (bars * secondsPerBar);
+    }
+
+    template <typename Fn>
+    void forEachWholeStepGridTimeBars (float secondsPerBar, Fn&& fn)
+    {
+        const auto maxBars = static_cast<int> (std::floor (graphTimeMaxSeconds / secondsPerBar + 0.001f));
+
+        for (int bar = 1; bar <= maxBars; ++bar)
+            fn (static_cast<float> (bar) * secondsPerBar);
+    }
+
+    template <typename Fn>
+    void forEachSnapGridTime (bool inBars, float secondsPerBar, Fn&& fn)
+    {
+        if (inBars)
+        {
+            for (float t = secondsPerBar * 0.5f; t <= graphTimeMaxSeconds + 0.001f; t += secondsPerBar * 0.5f)
+                fn (t);
+        }
+        else
+        {
+            for (float t = 0.5f; t <= graphTimeMaxSeconds + 0.001f; t += 0.5f)
+                fn (t);
+        }
+    }
 }
 
-ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsToUse)
-    : apvts (apvtsToUse)
+ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsToUse,
+                                      std::function<float()> getHostBpm)
+    : apvts (apvtsToUse),
+      hostBpmProvider (std::move (getHostBpm))
 {
     setWantsKeyboardFocus (false);
     setMouseClickGrabsKeyboardFocus (false);
@@ -90,12 +154,20 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
         repaint();
     };
 
-    for (auto* button : { &addPointButton, &removePointButton })
+    for (auto* button : { &addPointButton, &removePointButton, &timeAxisUnitButton })
     {
         button->setWantsKeyboardFocus (false);
         button->setMouseClickGrabsKeyboardFocus (false);
         addAndMakeVisible (*button);
     }
+
+    timeAxisUnitButton.onClick = [this]
+    {
+        displayTimelineInBars = ! displayTimelineInBars;
+        timeAxisUnitButton.setButtonText (displayTimelineInBars ? "Bar" : "s");
+        refreshEnvelopeFromApvts();
+        repaint();
+    };
 
     pointCountLabel.setJustificationType (juce::Justification::centredLeft);
     pointCountLabel.setColour (juce::Label::textColourId, juce::Colour (0xff9aa3ab));
@@ -187,8 +259,28 @@ void ModEnvelopeEditor::setActiveLane (Lane lane)
     repaint();
 }
 
+juce::ModifierKeys ModEnvelopeEditor::getRealtimeDragModifiers()
+{
+    return juce::ModifierKeys::getCurrentModifiersRealtime();
+}
+
 void ModEnvelopeEditor::timerCallback()
 {
+    if (drag.active && drag.target == DragTarget::point && drag.index >= 0)
+    {
+        const auto mods = getRealtimeDragModifiers();
+        const auto pos = getMouseXYRelative().toFloat();
+
+        if (mods != drag.lastPollModifiers
+            || pos.getDistanceFrom (drag.lastDragPosition) > 0.01f)
+        {
+            drag.lastPollModifiers = mods;
+            drag.lastDragPosition = pos;
+            updateActivePointDrag (pos, mods);
+            return;
+        }
+    }
+
     repaint();
 }
 
@@ -197,8 +289,20 @@ void ModEnvelopeEditor::refreshEnvelopeFromApvts()
     envelope.updateFromApvts (apvts);
 
     const auto lengthSeconds = envelope.getMaxTimeSeconds (activeLane);
+    juce::String lengthText;
+
+    if (displayTimelineInBars)
+    {
+        const auto bars = lengthSeconds / getSecondsPerBar();
+        lengthText = juce::String (bars, 2) + " bar";
+    }
+    else
+    {
+        lengthText = juce::String (lengthSeconds, 1) + " s";
+    }
+
     pointCountLabel.setText ("Points: " + juce::String (envelope.getNumPoints (activeLane))
-                             + "  |  Length: " + juce::String (lengthSeconds, 1) + " s",
+                             + "  |  Length: " + lengthText,
                              juce::dontSendNotification);
 }
 
@@ -207,6 +311,8 @@ void ModEnvelopeEditor::resized()
     auto area = getLocalBounds().reduced (4);
 
     auto toolbar = area.removeFromTop (toolbarHeight);
+    timeAxisUnitButton.setBounds (toolbar.removeFromRight (40));
+    toolbar.removeFromRight (6);
     enabledToggle.setBounds (toolbar.removeFromLeft (44));
     toolbar.removeFromLeft (6);
     loopToggle.setBounds (toolbar.removeFromLeft (52));
@@ -380,6 +486,47 @@ juce::Colour ModEnvelopeEditor::laneColour (Lane lane) const
     return juce::Colours::white;
 }
 
+float ModEnvelopeEditor::getClampedHostBpm() const
+{
+    return juce::jlimit (20.0f, 999.0f, hostBpmProvider ? hostBpmProvider() : 120.0f);
+}
+
+float ModEnvelopeEditor::getSecondsPerBar() const
+{
+    return 240.0f / getClampedHostBpm();
+}
+
+float ModEnvelopeEditor::timelineTimeToProportion (float timeSeconds) const
+{
+    if (! displayTimelineInBars)
+    {
+        timeSeconds = juce::jlimit (0.0f, graphTimeMaxSeconds, timeSeconds);
+        return std::log (1.0f + timeSeconds) / std::log (1.0f + graphTimeMaxSeconds);
+    }
+
+    const auto secPerBar = getSecondsPerBar();
+    const auto maxBars = graphTimeMaxSeconds / secPerBar;
+    const auto bars = juce::jlimit (0.0f, maxBars, timeSeconds / secPerBar);
+    const auto denom = std::log (1.0f + maxBars);
+
+    if (denom <= 1.0e-8f)
+        return 0.0f;
+
+    return std::log (1.0f + bars) / denom;
+}
+
+float ModEnvelopeEditor::timelineProportionToTime (float proportion) const
+{
+    proportion = juce::jlimit (0.0f, 1.0f, proportion);
+
+    if (! displayTimelineInBars)
+        return std::exp (proportion * std::log (1.0f + graphTimeMaxSeconds)) - 1.0f;
+
+    const auto secPerBar = getSecondsPerBar();
+    const auto maxBars = graphTimeMaxSeconds / secPerBar;
+    return (std::exp (proportion * std::log (1.0f + maxBars)) - 1.0f) * secPerBar;
+}
+
 float ModEnvelopeEditor::timeToX (float timeSeconds, juce::Rectangle<float> graph) const
 {
     return timeToXForLane (timeSeconds, graph, activeLane);
@@ -388,13 +535,41 @@ float ModEnvelopeEditor::timeToX (float timeSeconds, juce::Rectangle<float> grap
 float ModEnvelopeEditor::timeToXForLane (float timeSeconds, juce::Rectangle<float> graph, Lane lane) const
 {
     juce::ignoreUnused (lane);
-    return graph.getX() + timeToDisplayProportion (timeSeconds) * graph.getWidth();
+    return graph.getX() + timelineTimeToProportion (timeSeconds) * graph.getWidth();
 }
 
 float ModEnvelopeEditor::xToTime (float x, juce::Rectangle<float> graph) const
 {
     const auto proportion = juce::jlimit (0.0f, 1.0f, (x - graph.getX()) / graph.getWidth());
-    return displayProportionToTime (proportion);
+    return timelineProportionToTime (proportion);
+}
+
+float ModEnvelopeEditor::snapTimeToVerticalGridIfClose (float timeSeconds, float mouseX, juce::Rectangle<float> graph,
+                                                        juce::ModifierKeys mods) const
+{
+    if (! mods.isCtrlDown())
+        return timeSeconds;
+
+    auto bestTime = timeSeconds;
+    auto bestDistancePx = verticalGridSnapDistancePx;
+
+    const auto trySnap = [&] (float candidateSeconds)
+    {
+        if (candidateSeconds <= 0.0f || candidateSeconds > graphTimeMaxSeconds + 0.001f)
+            return;
+
+        const auto distancePx = std::abs (timeToX (candidateSeconds, graph) - mouseX);
+
+        if (distancePx < bestDistancePx)
+        {
+            bestDistancePx = distancePx;
+            bestTime = candidateSeconds;
+        }
+    };
+
+    forEachSnapGridTime (displayTimelineInBars, getSecondsPerBar(), [&] (float t) { trySnap (t); });
+
+    return bestTime;
 }
 
 float ModEnvelopeEditor::valueToY (float normalized, juce::Rectangle<float> graph) const
@@ -575,32 +750,95 @@ void ModEnvelopeEditor::paint (juce::Graphics& g)
         g.drawHorizontalLine (juce::roundToInt (y), graph.getX(), graph.getRight());
     }
 
-    for (const float tickSeconds : { 1.0f, 2.0f, 5.0f })
+    const auto drawVerticalGridLine = [&] (float timeSeconds, juce::Colour colour, bool dotted)
     {
-        const auto tickX = timeToX (tickSeconds, graph);
-        g.setColour (juce::Colour (0xff2a3238));
-        g.drawVerticalLine (juce::roundToInt (tickX), graph.getY(), graph.getBottom());
+        if (timeSeconds <= 0.0f || timeSeconds > graphTimeMaxSeconds + 0.001f)
+            return;
+
+        const auto tickX = timeToX (timeSeconds, graph);
+
+        if (dotted)
+            drawDottedVerticalGridLine (g, tickX, graph.getY(), graph.getBottom(), colour);
+        else
+        {
+            g.setColour (colour);
+            g.drawVerticalLine (juce::roundToInt (tickX), graph.getY(), graph.getBottom());
+        }
+    };
+
+    if (displayTimelineInBars)
+    {
+        const auto secPerBar = getSecondsPerBar();
+
+        forEachHalfStepGridTimeBars (secPerBar, [&] (float t)
+        {
+            drawVerticalGridLine (t, minorVerticalGridColour, true);
+        });
+
+        forEachWholeStepGridTimeBars (secPerBar, [&] (float t)
+        {
+            drawVerticalGridLine (t, majorVerticalGridColour, false);
+        });
+    }
+    else
+    {
+        forEachHalfStepGridTimeSeconds ([&] (float t)
+        {
+            drawVerticalGridLine (t, minorVerticalGridColour, true);
+        });
+
+        forEachWholeStepGridTimeSeconds ([&] (float t)
+        {
+            drawVerticalGridLine (t, majorVerticalGridColour, false);
+        });
     }
 
     const auto timeAxis = juce::Rectangle<float> (graph.getX(), graph.getBottom() + 2.0f,
                                                   graph.getWidth(), static_cast<float> (timeAxisHeight));
     g.setColour (juce::Colour (0xff6d767e));
     g.setFont (juce::FontOptions (10.0f));
-    g.drawText ("0 s", timeAxis.getX(), timeAxis.getY(), 36.0f, timeAxis.getHeight(), juce::Justification::centredLeft);
-    g.drawText (juce::String (graphTimeMaxSeconds, 0) + " s",
-                timeAxis.getRight() - 40.0f, timeAxis.getY(), 40.0f, timeAxis.getHeight(), juce::Justification::centredRight);
 
-    for (const float tickSeconds : { 1.0f, 2.0f, 5.0f })
+    if (displayTimelineInBars)
     {
-        const auto tickX = timeToX (tickSeconds, graph);
-        const auto label = juce::String (tickSeconds, tickSeconds >= 1.0f ? 0 : 1) + " s";
-        const auto labelWidth = 28.0f;
-        g.drawText (label,
-                    tickX - labelWidth * 0.5f,
-                    timeAxis.getY(),
-                    labelWidth,
-                    timeAxis.getHeight(),
-                    juce::Justification::centred);
+        const auto maxBars = graphTimeMaxSeconds / getSecondsPerBar();
+        g.drawText ("0", timeAxis.getX(), timeAxis.getY(), 28.0f, timeAxis.getHeight(), juce::Justification::centredLeft);
+        g.drawText (juce::String (maxBars, 1) + " bar",
+                    timeAxis.getRight() - 48.0f, timeAxis.getY(), 48.0f, timeAxis.getHeight(), juce::Justification::centredRight);
+
+        const auto secPerBar = getSecondsPerBar();
+
+        forEachWholeStepGridTimeBars (secPerBar, [&] (float tickSeconds)
+        {
+            const auto barIndex = juce::roundToInt (tickSeconds / secPerBar);
+            const auto tickX = timeToX (tickSeconds, graph);
+            const auto label = juce::String (barIndex) + " bar";
+            const auto labelWidth = 40.0f;
+            g.drawText (label,
+                        tickX - labelWidth * 0.5f,
+                        timeAxis.getY(),
+                        labelWidth,
+                        timeAxis.getHeight(),
+                        juce::Justification::centred);
+        });
+    }
+    else
+    {
+        g.drawText ("0 s", timeAxis.getX(), timeAxis.getY(), 36.0f, timeAxis.getHeight(), juce::Justification::centredLeft);
+        g.drawText (juce::String (graphTimeMaxSeconds, 0) + " s",
+                    timeAxis.getRight() - 40.0f, timeAxis.getY(), 40.0f, timeAxis.getHeight(), juce::Justification::centredRight);
+
+        forEachWholeStepGridTimeSeconds ([&] (float tickSeconds)
+        {
+            const auto tickX = timeToX (tickSeconds, graph);
+            const auto label = juce::String (juce::roundToInt (tickSeconds)) + " s";
+            const auto labelWidth = 28.0f;
+            g.drawText (label,
+                        tickX - labelWidth * 0.5f,
+                        timeAxis.getY(),
+                        labelWidth,
+                        timeAxis.getHeight(),
+                        juce::Justification::centred);
+        });
     }
 
     const auto endTime = envelope.getMaxTimeSeconds (activeLane);
@@ -689,6 +927,9 @@ void ModEnvelopeEditor::mouseDown (const juce::MouseEvent& e)
     {
         drag.target = DragTarget::point;
         drag.index = pointHit;
+        drag.lastDragPosition = e.position;
+        drag.lastPollModifiers = getRealtimeDragModifiers();
+        startTimerHz (30);
     }
     else
     {
@@ -715,6 +956,52 @@ void ModEnvelopeEditor::mouseDown (const juce::MouseEvent& e)
     }
 }
 
+void ModEnvelopeEditor::updateActivePointDrag (juce::Point<float> position, juce::ModifierKeys mods)
+{
+    const auto index = drag.index;
+    const auto graph = getGraphBounds();
+    const auto numPoints = envelope.getNumPoints (activeLane);
+    const auto valueLockedEnd = isLastPointValueLockedForLoop (activeLane) && isLastPointIndex (activeLane, index);
+
+    auto newTime = xToTime (position.x, graph);
+
+    if (index > 0)
+        newTime = snapTimeToVerticalGridIfClose (newTime, position.x, graph, mods);
+
+    if (index == 0)
+        newTime = 0.0f;
+    else
+        newTime = juce::jmax (newTime, apvts.getRawParameterValue (ModEnvelopeParamIds::pointTime (activeLane, index - 1))->load() + 0.01f);
+
+    if (index < numPoints - 1)
+        newTime = juce::jmin (newTime, apvts.getRawParameterValue (ModEnvelopeParamIds::pointTime (activeLane, index + 1))->load() - 0.01f);
+
+    setPointTime (activeLane, index, newTime);
+
+    if (! valueLockedEnd)
+    {
+        const auto normalized = yToNormalized (position.y, graph);
+        setPointValue (activeLane, index, normalizedToLane (activeLane, normalized));
+    }
+
+    refreshEnvelopeFromApvts();
+    repaint();
+}
+
+void ModEnvelopeEditor::modifierKeysChanged (const juce::ModifierKeys& modifiers)
+{
+    juce::ignoreUnused (modifiers);
+
+    if (drag.active && drag.target == DragTarget::point && drag.index >= 0)
+    {
+        const auto mods = getRealtimeDragModifiers();
+        const auto pos = getMouseXYRelative().toFloat();
+        drag.lastPollModifiers = mods;
+        drag.lastDragPosition = pos;
+        updateActivePointDrag (pos, mods);
+    }
+}
+
 void ModEnvelopeEditor::mouseDrag (const juce::MouseEvent& e)
 {
     if (! drag.active || drag.index < 0)
@@ -731,30 +1018,10 @@ void ModEnvelopeEditor::mouseDrag (const juce::MouseEvent& e)
         return;
     }
 
-    const auto index = drag.index;
-    const auto numPoints = envelope.getNumPoints (activeLane);
-    const auto valueLockedEnd = isLastPointValueLockedForLoop (activeLane) && isLastPointIndex (activeLane, index);
-
-    auto newTime = xToTime (e.position.x, graph);
-
-    if (index == 0)
-        newTime = 0.0f;
-    else
-        newTime = juce::jmax (newTime, apvts.getRawParameterValue (ModEnvelopeParamIds::pointTime (activeLane, index - 1))->load() + 0.01f);
-
-    if (index < numPoints - 1)
-        newTime = juce::jmin (newTime, apvts.getRawParameterValue (ModEnvelopeParamIds::pointTime (activeLane, index + 1))->load() - 0.01f);
-
-    setPointTime (activeLane, index, newTime);
-
-    if (! valueLockedEnd)
-    {
-        const auto normalized = yToNormalized (e.position.y, graph);
-        setPointValue (activeLane, index, normalizedToLane (activeLane, normalized));
-    }
-
-    refreshEnvelopeFromApvts();
-    repaint();
+    const auto mods = getRealtimeDragModifiers();
+    drag.lastDragPosition = e.position;
+    drag.lastPollModifiers = mods;
+    updateActivePointDrag (e.position, mods);
 }
 
 void ModEnvelopeEditor::mouseUp (const juce::MouseEvent& e)
@@ -763,4 +1030,6 @@ void ModEnvelopeEditor::mouseUp (const juce::MouseEvent& e)
     drag.active = false;
     drag.target = DragTarget::none;
     drag.index = -1;
+    drag.lastPollModifiers = {};
+    startTimerHz (15);
 }

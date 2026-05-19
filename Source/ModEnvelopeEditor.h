@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include <JuceHeader.h>
 #include "ModulationEnvelope.h"
 
@@ -14,7 +16,8 @@ class ModEnvelopeEditor : public juce::Component,
 public:
     using Lane = ModulationEnvelope::Lane;
 
-    explicit ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsToUse);
+    explicit ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsToUse,
+                                std::function<float()> getHostBpm = [] { return 120.0f; });
 
     void paint (juce::Graphics& g) override;
     void resized() override;
@@ -22,6 +25,7 @@ public:
     void mouseDown (const juce::MouseEvent& e) override;
     void mouseDrag (const juce::MouseEvent& e) override;
     void mouseUp (const juce::MouseEvent& e) override;
+    void modifierKeysChanged (const juce::ModifierKeys& modifiers) override;
 
     void timerCallback() override;
 
@@ -44,6 +48,8 @@ private:
         bool active = false;
         float segmentDragStartCurve = 0.0f;
         float segmentDragStartY = 0.0f;
+        juce::Point<float> lastDragPosition;
+        juce::ModifierKeys lastPollModifiers;
     };
 
     float laneToNormalized (Lane lane, float value) const;
@@ -56,6 +62,13 @@ private:
     float timeToX (float timeSeconds, juce::Rectangle<float> graph) const;
     float timeToXForLane (float timeSeconds, juce::Rectangle<float> graph, Lane lane) const;
     float xToTime (float x, juce::Rectangle<float> graph) const;
+
+    float getClampedHostBpm() const;
+    float getSecondsPerBar() const;
+    float timelineTimeToProportion (float timeSeconds) const;
+    float timelineProportionToTime (float proportion) const;
+    float snapTimeToVerticalGridIfClose (float timeSeconds, float mouseX, juce::Rectangle<float> graph,
+                                         juce::ModifierKeys mods) const;
     float valueToY (float normalized, juce::Rectangle<float> graph) const;
     float yToNormalized (float y, juce::Rectangle<float> graph) const;
 
@@ -64,6 +77,8 @@ private:
     int hitTestLaneStripRow (juce::Point<float> pos) const;
 
     void refreshEnvelopeFromApvts();
+    void updateActivePointDrag (juce::Point<float> position, juce::ModifierKeys mods);
+    static juce::ModifierKeys getRealtimeDragModifiers();
     void setPointTime (Lane lane, int index, float timeSeconds);
     void setPointValue (Lane lane, int index, float value);
     void setSegmentCurve (Lane lane, int segmentIndex, float curve);
@@ -86,6 +101,8 @@ private:
     void buildLanePath (juce::Path& path, Lane lane, juce::Rectangle<float> graph) const;
 
     juce::AudioProcessorValueTreeState& apvts;
+    std::function<float()> hostBpmProvider;
+    bool displayTimelineInBars = false;
     ModulationEnvelope envelope;
 
     Lane activeLane = Lane::amplitude;
@@ -93,6 +110,7 @@ private:
 
     juce::ToggleButton enabledToggle { "On" };
     juce::ToggleButton loopToggle { "Loop" };
+    juce::TextButton timeAxisUnitButton { "s" };
     juce::TextButton addPointButton { "+" };
     juce::TextButton removePointButton { "-" };
     juce::Label pointCountLabel;

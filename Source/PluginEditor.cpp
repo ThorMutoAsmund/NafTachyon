@@ -115,7 +115,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
     : AudioProcessorEditor (&p),
       audioProcessor (p),
       waveformPreview (p.getApvts()),
-      modEnvelopeEditor (p.getApvts())
+      modEnvelopeEditor (p.getApvts(), [&p]() { return p.getLiveHostBpm(); })
 
 {
 

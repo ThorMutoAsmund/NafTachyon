@@ -18,6 +18,8 @@
 
 
 
+#include <atomic>
+
 #include <JuceHeader.h>
 
 #include "ModulationEnvelope.h"
@@ -112,7 +114,8 @@ public:
 
     juce::AudioProcessorValueTreeState& getApvts() { return apvts; }
 
-
+    /** Last BPM from host playhead (audio thread); used for EVOLVE bar axis. Defaults to 120. */
+    float getLiveHostBpm() const noexcept { return cachedHostBpm.load (std::memory_order_relaxed); }
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
@@ -264,7 +267,7 @@ private:
 
     juce::AudioProcessorValueTreeState apvts;
 
-
+    mutable std::atomic<float> cachedHostBpm { 120.0f };
 
     //==============================================================================
 

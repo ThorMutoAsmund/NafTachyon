@@ -734,6 +734,11 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     buffer.clear();
 
+    if (auto* hostPlayHead = getPlayHead())
+        if (const auto position = hostPlayHead->getPosition())
+            if (const auto bpm = position->getBpm())
+                cachedHostBpm.store (static_cast<float> (*bpm), std::memory_order_relaxed);
+
     const auto amplitudeKnob = apvts.getRawParameterValue (amplitudeParamId)->load();
     const auto waveformMorphKnob = apvts.getRawParameterValue (waveformParamId)->load();
     const auto pulseWidthKnob = apvts.getRawParameterValue (pulseWidthParamId)->load();
