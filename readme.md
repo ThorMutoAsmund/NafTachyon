@@ -40,6 +40,8 @@
 - Unison
 
 # Future ideas
+- Fine tune
+- Filter 6db and 12db have same loudness in reso, which is good, but 24db is louder
 - Better Unison/Detune (look at Vital)
 - More than one oscillator
 - Random amplitude option (between two values)
