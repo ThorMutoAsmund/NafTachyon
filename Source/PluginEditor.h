@@ -119,11 +119,15 @@ private:
 
     NafTachyonKnob overtonesSlider;
 
+    NafTachyonKnob pitchTuneSlider;
+
     juce::Label waveformLabel;
 
     juce::Label pulseWidthLabel;
 
     juce::Label overtonesLabel;
+
+    juce::Label pitchTuneLabel;
 
     WaveformPreview waveformPreview;
 
@@ -172,6 +176,8 @@ private:
     std::unique_ptr<SliderAttachment> pulseWidthAttachment;
 
     std::unique_ptr<SliderAttachment> overtonesAttachment;
+
+    std::unique_ptr<SliderAttachment> pitchTuneAttachment;
 
     std::unique_ptr<SliderAttachment> cutoffAttachment;
 

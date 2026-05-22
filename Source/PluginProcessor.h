@@ -241,6 +241,9 @@ private:
         /** 6 dB mode: 0 = one-pole only, 1 = full resonant biquad blend. */
         float sixDbResonantBlend = 0.0f;
 
+        /** 24 dB mode: scales output to match single-biquad peak level (~1 at low resonance). */
+        float peakGainCompensation = 1.0f;
+
     };
 
 
@@ -292,6 +295,7 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> amplitudeSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> modWheelSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> pitchBendSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> pitchTuneSmoother;
 
     double vibratoLfoPhase = 0.0;
 

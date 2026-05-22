@@ -78,7 +78,7 @@ namespace
 
         dialArea.removeFromTop (labelRowHeight);
 
-        const auto columnWidth = dialArea.getWidth() / 3;
+        const auto columnWidth = dialArea.getWidth() / 4;
 
         return juce::jmin (columnWidth, dialArea.getHeight(), maxDialSize);
 
@@ -149,6 +149,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureKnob (waveformGroup, overtonesSlider, overtonesLabel, "Harmonics");
 
+    configureKnob (waveformGroup, pitchTuneSlider, pitchTuneLabel, "Pitch");
+
     waveformGroup.addAndMakeVisible (waveformPreview);
 
     evolveGroup.addAndMakeVisible (modEnvelopeEditor);
@@ -198,6 +200,8 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
     pulseWidthAttachment = std::make_unique<SliderAttachment> (apvts, "pulseWidth",      pulseWidthSlider);
 
     overtonesAttachment  = std::make_unique<SliderAttachment> (apvts, "overtones",       overtonesSlider);
+
+    pitchTuneAttachment  = std::make_unique<SliderAttachment> (apvts, "pitchTune",       pitchTuneSlider);
 
     cutoffAttachment     = std::make_unique<SliderAttachment> (apvts, "filterCutoff",    cutoffSlider);
 
@@ -420,7 +424,7 @@ void NafTachyonAudioProcessorEditor::layoutWaveformControls (juce::Rectangle<int
 
 
 
-    const int columnWidth = area.getWidth() / 3;
+    const int columnWidth = area.getWidth() / 4;
 
 
 
@@ -428,7 +432,9 @@ void NafTachyonAudioProcessorEditor::layoutWaveformControls (juce::Rectangle<int
 
     auto widthColumn = area.removeFromLeft (columnWidth);
 
-    auto overtonesColumn = area;
+    auto overtonesColumn = area.removeFromLeft (columnWidth);
+
+    auto pitchTuneColumn = area;
 
 
 
@@ -453,6 +459,14 @@ void NafTachyonAudioProcessorEditor::layoutWaveformControls (juce::Rectangle<int
     overtonesLabel.setBounds (overtonesLabelRow);
 
     layoutCentredDial (overtonesSlider, overtonesColumn, dialSize);
+
+
+
+    auto pitchTuneLabelRow = pitchTuneColumn.removeFromTop (labelRowHeight);
+
+    pitchTuneLabel.setBounds (pitchTuneLabelRow);
+
+    layoutCentredDial (pitchTuneSlider, pitchTuneColumn, dialSize);
 
 }
 

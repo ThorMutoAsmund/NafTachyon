@@ -21,6 +21,7 @@ namespace
     constexpr auto filterSlopeParamId   = "filterSlope";
     constexpr auto filterLimiterParamId = "filterLimiter";
     constexpr auto overtonesParamId     = "overtones";
+    constexpr auto pitchTuneParamId     = "pitchTune";
     constexpr auto pulseWidthParamId  = "pulseWidth";
     constexpr auto unisonParamId        = "unison";
     constexpr auto unisonSpreadParamId  = "unisonSpread";
@@ -150,6 +151,11 @@ namespace
         return std::pow (2.0, static_cast<double> (pitchWheelNormalised * pitchBendRangeSemitones) / 12.0);
     }
 
+    double pitchFineTuneRatio (float cents)
+    {
+        return std::pow (2.0, static_cast<double> (cents) / 1200.0);
+    }
+
     juce::NormalisableRange<float> makeFilterCutoffRange()
     {
         juce::NormalisableRange<float> range { 20.0f, 20000.0f };
@@ -241,6 +247,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
         "Harmonics",
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
         0.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { pitchTuneParamId, 1 },
+        "Pitch fine tune",
+        juce::NormalisableRange<float> { -50.0f, 50.0f, 0.1f },
+        0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                const auto rounded = juce::roundToInt (value * 10.0f) / 10.0f;
+
+                if (std::abs (rounded) < 0.05f)
+                    return juce::String ("0 ct");
+
+                const auto sign = rounded > 0.0f ? "+" : "";
+                return sign + juce::String (rounded, 1) + " ct";
+            })));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { filterCutoffParamId, 1 },
@@ -426,6 +449,8 @@ void NafTachyonAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     modWheelSmoother.reset (sampleRate, 0.05);
     pitchBendSmoother.reset (sampleRate, 0.01);
     pitchBendSmoother.setCurrentAndTargetValue (0.0f);
+    pitchTuneSmoother.reset (sampleRate, 0.02);
+    pitchTuneSmoother.setCurrentAndTargetValue (0.0f);
 
     if (auto* cutoff = apvts.getRawParameterValue (filterCutoffParamId))
         filterCutoffSmoother.setCurrentAndTargetValue (cutoff->load());
@@ -441,6 +466,9 @@ void NafTachyonAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
 
     if (auto* amplitude = apvts.getRawParameterValue (amplitudeParamId))
         amplitudeSmoother.setCurrentAndTargetValue (amplitude->load());
+
+    if (auto* pitchTune = apvts.getRawParameterValue (pitchTuneParamId))
+        pitchTuneSmoother.setCurrentAndTargetValue (pitchTune->load());
 
     updateDcHighpassCoefficients();
     resetDcHighpassState();
@@ -577,6 +605,9 @@ NafTachyonAudioProcessor::FilterCoefficients NafTachyonAudioProcessor::makeFilte
     coeffs.a1 = (-2.0f * cosW0) / a0;
     coeffs.a2 = (1.0f - alpha) / a0;
 
+    if (slope == FilterSlope::twentyFourDb)
+        coeffs.peakGainCompensation = 1.0f / (1.0f + resonanceShaped);
+
     return coeffs;
 }
 
@@ -616,7 +647,10 @@ float NafTachyonAudioProcessor::filterSample (float input,
     auto sample = processBiquad (input, voice.biquad1Z1, voice.biquad1Z2);
 
     if (slope == FilterSlope::twentyFourDb)
+    {
         sample = processBiquad (sample, voice.biquad2Z1, voice.biquad2Z2);
+        sample *= coeffs.peakGainCompensation;
+    }
 
     return sample;
 }
@@ -872,6 +906,7 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto filterLimiterMode = static_cast<FilterLimiterMode> (filterLimiterIndex);
     const auto filterLimiterCoeffs = makeFilterLimiterCoeffs (filterLimiterMode);
     const auto releaseTimeSeconds = apvts.getRawParameterValue (releaseTimeParamId)->load();
+    pitchTuneSmoother.setTargetValue (apvts.getRawParameterValue (pitchTuneParamId)->load());
 
     for (const auto metadata : midiMessages)
     {
@@ -902,7 +937,8 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     {
         const auto modWheelDepth = modWheelSmoother.getNextValue();
         const auto pitchWheelNormalised = pitchBendSmoother.getNextValue();
-        const auto pitchRatio = vibratoPitchRatio (vibratoLfoPhase, modWheelDepth)
+        const auto pitchRatio = pitchFineTuneRatio (pitchTuneSmoother.getNextValue())
+                              * vibratoPitchRatio (vibratoLfoPhase, modWheelDepth)
                               * pitchBendRatio (pitchWheelNormalised);
 
         vibratoLfoPhase += juce::MathConstants<double>::twoPi * static_cast<double> (vibratoRateHz)
