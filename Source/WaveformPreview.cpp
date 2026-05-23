@@ -135,9 +135,11 @@ void WaveformPreview::paint (juce::Graphics& g)
 
     g.setColour (juce::Colour (0xffff8c1a));
 
+    const auto columnStep = bounds.getWidth() / static_cast<float> (numColumns);
+
     for (int column = 0; column < numColumns; ++column)
     {
-        const auto x = bounds.getX() + static_cast<float> (column) + 0.5f;
+        const auto x = bounds.getX() + (static_cast<float> (column) + 0.5f) * columnStep;
         const auto tStart = static_cast<double> (column) / static_cast<double> (numColumns);
         const auto tEnd = static_cast<double> (column + 1) / static_cast<double> (numColumns);
 
@@ -162,9 +164,11 @@ void WaveformPreview::paint (juce::Graphics& g)
         const auto yTop = centreY - maxSample * amplitudeScale;
         const auto yBottom = centreY - minSample * amplitudeScale;
 
+        const auto columnWidth = juce::jmax (1.0f, columnStep);
+
         if (std::abs (yTop - yBottom) < 0.5f)
-            g.fillRect (x, yTop - 0.5f, 1.0f, 1.0f);
+            g.fillRect (x - columnWidth * 0.5f, yTop - 0.5f, columnWidth, 1.0f);
         else
-            g.drawLine (x, yTop, x, yBottom, 1.0f);
+            g.drawLine (x, yTop, x, yBottom, columnWidth);
     }
 }

@@ -42,8 +42,11 @@ namespace
 
 
 
-    constexpr int minDialSize = 94;
-    constexpr int maxDialSize = 130;
+    constexpr float dialSizeUserScale = 0.75f;
+    constexpr int layoutMinDialSize = 94;
+    constexpr int layoutMaxDialSize = 130;
+    constexpr int minDialSize = 70;
+    constexpr int maxDialSize = 97;
     constexpr int mainControlColumns = 4;
 
     constexpr int labelRowHeight = 18;
@@ -62,7 +65,7 @@ namespace
 
     constexpr int minWaveformPreviewWidth = 108;
 
-
+    constexpr int waveformOscRowGap = 10;
 
     int knobStackHeightForDialSize (int dialSize)
     {
@@ -71,7 +74,9 @@ namespace
 
     int waveformPanelHeightForDialSize (int dialSize)
     {
-        return sectionChromeHeight + knobStackHeightForDialSize (dialSize) * waveformOscRows;
+        const auto rowStacks = knobStackHeightForDialSize (dialSize) * waveformOscRows;
+        const auto rowGaps = waveformOscRowGap * (waveformOscRows - 1);
+        return sectionChromeHeight + rowStacks + rowGaps;
     }
 
     int maxDialHeightInArea (int areaHeight)
@@ -87,24 +92,23 @@ namespace
 
     int computeUniformDialSize (int contentWidth)
     {
-        const auto mainHeightLimit = maxDialHeightInArea (knobStackHeightForDialSize (maxDialSize));
+        const auto mainHeightLimit = maxDialHeightInArea (knobStackHeightForDialSize (layoutMaxDialSize));
         const auto mainDialLimit = juce::jmin (contentWidth / mainControlColumns, mainHeightLimit);
 
         const auto waveColumnLimit = (contentWidth - minWaveformPreviewWidth - waveformRowLabelWidth)
                                    / waveformOscKnobsPerRow;
 
-        auto dialSize = juce::jlimit (minDialSize, maxDialSize,
+        auto dialSize = juce::jlimit (layoutMinDialSize, layoutMaxDialSize,
                                       juce::jmin (mainDialLimit, waveColumnLimit, contentWidth / 4));
 
         const auto unisonWidth = juce::jmax (200, dialSize * 2 + 60);
         const auto filterWidth = juce::jmax (1, contentWidth - unisonWidth);
-        dialSize = juce::jlimit (minDialSize, maxDialSize,
+        dialSize = juce::jlimit (layoutMinDialSize, layoutMaxDialSize,
                                  juce::jmin (dialSize, unisonWidth / 2, filterWidth / 4));
 
-        return dialSize;
+        return juce::jlimit (minDialSize, maxDialSize,
+                             juce::roundToInt (static_cast<float> (dialSize) * dialSizeUserScale));
     }
-
-    constexpr int mainSyncRowHeight = 30;
 
     int panelHeightForDialSize (int dialSize)
     {
@@ -113,7 +117,7 @@ namespace
 
     int mainPanelHeightForDialSize (int dialSize)
     {
-        return knobStackHeightForDialSize (dialSize) + mainSyncRowHeight + sectionChromeHeight;
+        return panelHeightForDialSize (dialSize);
     }
 
     struct LabelKnobRows
@@ -464,14 +468,16 @@ void NafTachyonAudioProcessorEditor::layoutMainControls (juce::Rectangle<int> ar
     auto mixKnobColumn = rows.knobRow.removeFromLeft (columnWidth);
     layoutKnobInColumn (oscMixSlider, mixKnobColumn, dialSize);
 
+    const auto releaseColumnX = rows.knobRow.getX();
     layoutKnobInColumn (releaseTimeSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
     layoutKnobInColumn (amplitudeVelSensitivitySlider, rows.knobRow, dialSize);
 
-    auto syncBounds = juce::Rectangle<int> (mixKnobColumn.getX(),
-                                          rows.knobRow.getBottom() + 4,
-                                          columnWidth,
-                                          26);
-    oscSyncToggle.setBounds (syncBounds.reduced (2, 0));
+    const auto syncWidth = juce::jmin (columnWidth, 52);
+    const auto syncX = releaseColumnX - syncWidth / 2;
+    oscSyncToggle.setBounds (syncX,
+                             rows.knobRow.getY() + dialSize,
+                             syncWidth,
+                             sliderTextBoxHeight);
 
 }
 
@@ -528,9 +534,9 @@ void NafTachyonAudioProcessorEditor::layoutWaveformControls (juce::Rectangle<int
 
     auto previewArea = area.removeFromRight (previewWidth);
 
-    waveformPreview.setBounds (previewArea.reduced (2, 0));
+    waveformPreview.setBounds (previewArea);
 
-    const auto rowHeight = area.getHeight() / waveformOscRows;
+    const auto rowHeight = knobStackHeightForDialSize (dialSize);
 
     auto osc1Row = area.removeFromTop (rowHeight);
     layoutWaveformOscRow (osc1Row,
@@ -547,7 +553,10 @@ void NafTachyonAudioProcessorEditor::layoutWaveformControls (juce::Rectangle<int
                           pitchTuneSlider,
                           pitchTuneLabel);
 
-    layoutWaveformOscRow (area,
+    area.removeFromTop (waveformOscRowGap);
+
+    auto osc2Row = area.removeFromTop (rowHeight);
+    layoutWaveformOscRow (osc2Row,
                           dialSize,
                           osc2RowLabel,
                           osc2WaveformSlider,
