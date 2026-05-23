@@ -17,23 +17,10 @@ namespace
     constexpr auto osc2OvertonesParamId = "osc2Overtones";
     constexpr auto osc1PitchParamId = "osc1Pitch";
     constexpr auto osc2PitchParamId = "osc2Pitch";
-    constexpr auto oscMixParamId = "oscMix";
 
     constexpr int maxPreviewColumns = 128;
     constexpr int previewSamplesPerColumn = 8;
     constexpr int previewSamplesPerColumnHarmonics = 16;
-
-    float mixOscillatorSamples (float osc1Sample, float osc2Sample, float mix)
-    {
-        const auto osc2Mix = juce::jlimit (0.0f, 1.0f, mix);
-        const auto osc1Mix = 1.0f - osc2Mix;
-        const auto sum = osc1Mix + osc2Mix;
-
-        if (sum < 1.0e-5f)
-            return 0.0f;
-
-        return (osc1Sample * osc1Mix + osc2Sample * osc2Mix) / sum;
-    }
 
     float samplePreviewWave (double t,
                              double basePhaseIncrement,
@@ -78,7 +65,7 @@ void WaveformPreview::attachParameterListeners()
     for (const auto* id : { waveformParamId, pulseWidthParamId, overtonesParamId,
                             osc1PitchParamId,
                             osc2WaveformParamId, osc2PulseWidthParamId, osc2OvertonesParamId,
-                            osc2PitchParamId, oscMixParamId })
+                            osc2PitchParamId })
         apvts.addParameterListener (id, this);
 }
 
@@ -87,7 +74,7 @@ void WaveformPreview::detachParameterListeners()
     for (const auto* id : { waveformParamId, pulseWidthParamId, overtonesParamId,
                             osc1PitchParamId,
                             osc2WaveformParamId, osc2PulseWidthParamId, osc2OvertonesParamId,
-                            osc2PitchParamId, oscMixParamId })
+                            osc2PitchParamId })
         apvts.removeParameterListener (id, this);
 }
 
@@ -97,6 +84,15 @@ void WaveformPreview::parameterChanged (const juce::String& parameterID, float n
 
     if (isVisible())
         repaint();
+}
+
+void WaveformPreview::mouseUp (const juce::MouseEvent& e)
+{
+    if (! e.mouseWasClicked())
+        return;
+
+    showOsc2 = ! showOsc2;
+    repaint();
 }
 
 void WaveformPreview::paint (juce::Graphics& g)
@@ -117,7 +113,18 @@ void WaveformPreview::paint (juce::Graphics& g)
     const auto osc2Overtones = apvts.getRawParameterValue (osc2OvertonesParamId)->load();
     const auto osc1Pitch = apvts.getRawParameterValue (osc1PitchParamId)->load();
     const auto osc2Pitch = apvts.getRawParameterValue (osc2PitchParamId)->load();
-    const auto oscMix = apvts.getRawParameterValue (oscMixParamId)->load();
+
+    const auto activeMorph = showOsc2 ? osc2Morph : morph;
+    const auto activePulseWidth = showOsc2 ? osc2PulseWidth : pulseWidth;
+    const auto activeOvertones = showOsc2 ? osc2Overtones : overtones;
+    const auto activePitch = showOsc2 ? osc2Pitch : osc1Pitch;
+
+    g.setFont (juce::FontOptions (10.0f));
+    g.setColour (juce::Colour (0xffc8d0d6).withAlpha (0.85f));
+    g.drawText (showOsc2 ? "OSC 2" : "OSC 1",
+                bounds.reduced (6.0f, 4.0f),
+                juce::Justification::topLeft,
+                false);
 
     const auto centreY = bounds.getCentreY();
     const auto amplitudeScale = bounds.getHeight() * 0.42f;
@@ -126,9 +133,8 @@ void WaveformPreview::paint (juce::Graphics& g)
     g.drawLine (bounds.getX(), centreY, bounds.getRight(), centreY, 1.0f);
 
     const auto numColumns = juce::jlimit (1, maxPreviewColumns, static_cast<int> (std::ceil (bounds.getWidth())));
-    const auto samplesPerColumn = (overtones > 0.001f || osc2Overtones > 0.001f)
-                                ? previewSamplesPerColumnHarmonics
-                                : previewSamplesPerColumn;
+    const auto samplesPerColumn = activeOvertones > 0.001f ? previewSamplesPerColumnHarmonics
+                                                           : previewSamplesPerColumn;
     const auto phaseIncrement = juce::MathConstants<double>::twoPi
                                 / (static_cast<double> (numColumns)
                                    * static_cast<double> (samplesPerColumn));
@@ -154,9 +160,12 @@ void WaveformPreview::paint (juce::Graphics& g)
                                        tStart,
                                        tEnd);
 
-            const auto osc1Value = samplePreviewWave (t, phaseIncrement, osc1Pitch, morph, pulseWidth, overtones);
-            const auto osc2Value = samplePreviewWave (t, phaseIncrement, osc2Pitch, osc2Morph, osc2PulseWidth, osc2Overtones);
-            const auto value = mixOscillatorSamples (osc1Value, osc2Value, oscMix);
+            const auto value = samplePreviewWave (t,
+                                                  phaseIncrement,
+                                                  activePitch,
+                                                  activeMorph,
+                                                  activePulseWidth,
+                                                  activeOvertones);
             minSample = juce::jmin (minSample, value);
             maxSample = juce::jmax (maxSample, value);
         }

@@ -14,6 +14,7 @@ public:
     ~WaveformPreview() override;
 
     void paint (juce::Graphics& g) override;
+    void mouseUp (const juce::MouseEvent& e) override;
 
 private:
     void parameterChanged (const juce::String& parameterID, float newValue) override;
@@ -22,4 +23,6 @@ private:
     void detachParameterListeners();
 
     juce::AudioProcessorValueTreeState& apvts;
+
+    bool showOsc2 = false;
 };
