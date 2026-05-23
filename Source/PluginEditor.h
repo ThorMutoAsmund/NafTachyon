@@ -71,6 +71,22 @@ private:
 
     void layoutWaveformControls (juce::Rectangle<int> area, int dialSize, int previewWidth);
 
+    void layoutWaveformOscRow (juce::Rectangle<int> rowArea,
+                               int dialSize,
+                               juce::Label& rowLabel,
+                               juce::Slider& shapeSlider,
+                               juce::Label& shapeLabel,
+                               juce::Slider& widthSlider,
+                               juce::Label& widthLabel,
+                               juce::Slider& harmonicsSlider,
+                               juce::Label& harmonicsLabel,
+                               juce::Slider& pitchSlider,
+                               juce::Label& pitchLabel,
+                               juce::Slider& fineTuneSlider,
+                               juce::Label& fineTuneLabel);
+
+    void configureToggleButton (juce::ToggleButton& button);
+
     int unisonPanelWidthForDialSize (int dialSize) const;
 
     int uniformDialSize = 108;
@@ -119,7 +135,21 @@ private:
 
     NafTachyonKnob overtonesSlider;
 
+    NafTachyonKnob osc1PitchSlider;
+
     NafTachyonKnob pitchTuneSlider;
+
+    NafTachyonKnob osc2WaveformSlider;
+
+    NafTachyonKnob osc2PulseWidthSlider;
+
+    NafTachyonKnob osc2OvertonesSlider;
+
+    NafTachyonKnob osc2PitchSlider;
+
+    NafTachyonKnob osc2PitchTuneSlider;
+
+    NafTachyonKnob oscMixSlider;
 
     juce::Label waveformLabel;
 
@@ -127,7 +157,27 @@ private:
 
     juce::Label overtonesLabel;
 
+    juce::Label osc1PitchLabel;
+
     juce::Label pitchTuneLabel;
+
+    juce::Label osc1RowLabel;
+
+    juce::Label osc2RowLabel;
+
+    juce::Label osc2WaveformLabel;
+
+    juce::Label osc2PulseWidthLabel;
+
+    juce::Label osc2OvertonesLabel;
+
+    juce::Label osc2PitchLabel;
+
+    juce::Label osc2PitchTuneLabel;
+
+    juce::Label oscMixLabel;
+
+    juce::ToggleButton oscSyncToggle { "Sync" };
 
     WaveformPreview waveformPreview;
 
@@ -177,7 +227,23 @@ private:
 
     std::unique_ptr<SliderAttachment> overtonesAttachment;
 
+    std::unique_ptr<SliderAttachment> osc1PitchAttachment;
+
     std::unique_ptr<SliderAttachment> pitchTuneAttachment;
+
+    std::unique_ptr<SliderAttachment> osc2WaveformAttachment;
+
+    std::unique_ptr<SliderAttachment> osc2PulseWidthAttachment;
+
+    std::unique_ptr<SliderAttachment> osc2OvertonesAttachment;
+
+    std::unique_ptr<SliderAttachment> osc2PitchAttachment;
+
+    std::unique_ptr<SliderAttachment> osc2PitchTuneAttachment;
+
+    std::unique_ptr<SliderAttachment> oscMixAttachment;
+
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> oscSyncAttachment;
 
     std::unique_ptr<SliderAttachment> cutoffAttachment;
 

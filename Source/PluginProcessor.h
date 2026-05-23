@@ -171,12 +171,31 @@ private:
 
         double fifthPhaseIncrement = 0.0;
 
+        double phase2 = 0.0;
+
+        double subPhase2 = 0.0;
+
+        double fifthPhase2 = 0.0;
+
+        double phase2Increment = 0.0;
+
+        double subPhase2Increment = 0.0;
+
+        double fifthPhase2Increment = 0.0;
+
         double unisonPhase[maxUnisonStack] {};
         double unisonSubPhase[maxUnisonStack] {};
         double unisonFifthPhase[maxUnisonStack] {};
         double unisonPhaseIncrement[maxUnisonStack] {};
         double unisonSubPhaseIncrement[maxUnisonStack] {};
         double unisonFifthPhaseIncrement[maxUnisonStack] {};
+
+        double unisonPhase2[maxUnisonStack] {};
+        double unisonSubPhase2[maxUnisonStack] {};
+        double unisonFifthPhase2[maxUnisonStack] {};
+        double unisonPhase2Increment[maxUnisonStack] {};
+        double unisonSubPhase2Increment[maxUnisonStack] {};
+        double unisonFifthPhase2Increment[maxUnisonStack] {};
 
         juce::int64 noteOnSample = 0;
 
@@ -295,7 +314,13 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> amplitudeSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> modWheelSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> pitchBendSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> osc1PitchSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> pitchTuneSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> osc2PitchSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> osc2PitchTuneSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> osc2PulseWidthSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> osc2OvertonesSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> oscMixSmoother;
 
     double vibratoLfoPhase = 0.0;
 

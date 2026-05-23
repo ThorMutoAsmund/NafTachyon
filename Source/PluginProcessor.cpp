@@ -22,6 +22,15 @@ namespace
     constexpr auto filterLimiterParamId = "filterLimiter";
     constexpr auto overtonesParamId     = "overtones";
     constexpr auto pitchTuneParamId     = "pitchTune";
+    constexpr auto osc1PitchParamId     = "osc1Pitch";
+    constexpr auto osc2WaveformParamId  = "osc2Waveform";
+    constexpr auto osc2PulseWidthParamId = "osc2PulseWidth";
+    constexpr auto osc2OvertonesParamId = "osc2Overtones";
+    constexpr auto osc2PitchTuneParamId = "osc2PitchTune";
+    constexpr auto osc2PitchParamId     = "osc2Pitch";
+    constexpr auto oscMixParamId        = "oscMix";
+    constexpr float maxOscPitchSemitones = 48.0f;
+    constexpr auto oscSyncParamId        = "oscSync";
     constexpr auto pulseWidthParamId  = "pulseWidth";
     constexpr auto unisonParamId        = "unison";
     constexpr auto unisonSpreadParamId  = "unisonSpread";
@@ -156,6 +165,133 @@ namespace
         return std::pow (2.0, static_cast<double> (cents) / 1200.0);
     }
 
+    double pitchSemitoneRatio (float semitones)
+    {
+        return std::pow (2.0, static_cast<double> (semitones) / 12.0);
+    }
+
+    juce::String semitonePitchToString (float semitones, int)
+    {
+        const auto rounded = juce::roundToInt (semitones * 10.0f) / 10.0f;
+
+        if (std::abs (rounded) < 0.05f)
+            return "0 st";
+
+        const auto sign = rounded > 0.0f ? "+" : "";
+        return sign + juce::String (rounded, 1) + " st";
+    }
+
+    float mixOscillatorSamples (float osc1Sample, float osc2Sample, float mix)
+    {
+        const auto osc2Mix = juce::jlimit (0.0f, 1.0f, mix);
+        const auto osc1Mix = 1.0f - osc2Mix;
+        const auto sum = osc1Mix + osc2Mix;
+
+        if (sum < 1.0e-5f)
+            return 0.0f;
+
+        return (osc1Sample * osc1Mix + osc2Sample * osc2Mix) / sum;
+    }
+
+    float computeOscLayerSample (double phase,
+                                 double phaseIncrement,
+                                 double subPhase,
+                                 double subPhaseIncrement,
+                                 double fifthPhase,
+                                 double fifthPhaseIncrement,
+                                 float waveformMorph,
+                                 float pulseWidth,
+                                 float overtones)
+    {
+        return WaveformSynth::computeOscillatorSample (phase,
+                                                       phaseIncrement,
+                                                       subPhase,
+                                                       subPhaseIncrement,
+                                                       fifthPhase,
+                                                       fifthPhaseIncrement,
+                                                       waveformMorph,
+                                                       pulseWidth,
+                                                       overtones);
+    }
+
+    void updateUnisonIncrementsForBase (double baseIncrement,
+                                        double* unisonPhaseIncrement,
+                                        double* unisonSubPhaseIncrement,
+                                        double* unisonFifthPhaseIncrement,
+                                        const UnisonSettings& settings)
+    {
+        for (int i = 0; i < unisonStackSize; ++i)
+        {
+            const auto detuneRatio = i < settings.count
+                                   ? std::pow (2.0, settings.detuneCents[i] / 1200.0)
+                                   : 1.0;
+
+            unisonPhaseIncrement[i] = baseIncrement * detuneRatio;
+            unisonSubPhaseIncrement[i] = unisonPhaseIncrement[i] * 0.5;
+            unisonFifthPhaseIncrement[i] = unisonPhaseIncrement[i] * WaveformSynth::perfectFifthRatio;
+        }
+    }
+
+    void advanceMasterPhase (double& phase, double increment, bool& wrappedOut)
+    {
+        phase += increment;
+
+        if (phase >= juce::MathConstants<double>::twoPi)
+        {
+            phase -= juce::MathConstants<double>::twoPi;
+            wrappedOut = true;
+        }
+        else
+        {
+            wrappedOut = false;
+        }
+    }
+
+    void advanceFreeRunningPhases (double& phase,
+                                   double& subPhase,
+                                   double& fifthPhase,
+                                   double mainInc,
+                                   double subInc,
+                                   double fifthInc)
+    {
+        phase += mainInc;
+        subPhase += subInc;
+        fifthPhase += fifthInc;
+
+        while (phase >= juce::MathConstants<double>::twoPi)
+            phase -= juce::MathConstants<double>::twoPi;
+
+        while (subPhase >= juce::MathConstants<double>::twoPi)
+            subPhase -= juce::MathConstants<double>::twoPi;
+
+        while (fifthPhase >= juce::MathConstants<double>::twoPi)
+            fifthPhase -= juce::MathConstants<double>::twoPi;
+    }
+
+    void syncSlavePhasesToMaster (double masterPhase,
+                                  double masterSubPhase,
+                                  double masterFifthPhase,
+                                  double syncRatio,
+                                  double& slavePhase,
+                                  double& slaveSubPhase,
+                                  double& slaveFifthPhase)
+    {
+        auto wrap = [] (double value)
+        {
+            while (value >= juce::MathConstants<double>::twoPi)
+                value -= juce::MathConstants<double>::twoPi;
+
+            while (value < 0.0)
+                value += juce::MathConstants<double>::twoPi;
+
+            return value;
+        };
+
+        slavePhase = wrap (masterPhase * syncRatio);
+        slaveSubPhase = wrap (masterSubPhase * syncRatio);
+        slaveFifthPhase = wrap (masterFifthPhase * syncRatio);
+    }
+
     juce::NormalisableRange<float> makeFilterCutoffRange()
     {
         juce::NormalisableRange<float> range { 20.0f, 20000.0f };
@@ -249,8 +385,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
         0.0f));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { osc1PitchParamId, 1 },
+        "Oscillator 1 pitch",
+        juce::NormalisableRange<float> { -maxOscPitchSemitones, maxOscPitchSemitones, 0.01f },
+        0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (semitonePitchToString)));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { pitchTuneParamId, 1 },
-        "Pitch fine tune",
+        "Oscillator 1 fine tune",
         juce::NormalisableRange<float> { -50.0f, 50.0f, 0.1f },
         0.0f,
         juce::AudioParameterFloatAttributes()
@@ -264,6 +407,72 @@ juce::AudioProcessorValueTreeState::ParameterLayout NafTachyonAudioProcessor::cr
                 const auto sign = rounded > 0.0f ? "+" : "";
                 return sign + juce::String (rounded, 1) + " ct";
             })));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { osc2WaveformParamId, 1 },
+        "Oscillator 2 waveform",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
+        0.5f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("")
+            .withStringFromValueFunction ([] (float value, int) { return waveformMorphToString (value); })));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { osc2PulseWidthParamId, 1 },
+        "Oscillator 2 width",
+        juce::NormalisableRange<float> { -1.0f, 1.0f, 0.001f },
+        0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value * 100.0f)) + "%";
+            })));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { osc2OvertonesParamId, 1 },
+        "Oscillator 2 harmonics",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
+        0.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { osc2PitchParamId, 1 },
+        "Oscillator 2 pitch",
+        juce::NormalisableRange<float> { -maxOscPitchSemitones, maxOscPitchSemitones, 0.01f },
+        0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (semitonePitchToString)));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { osc2PitchTuneParamId, 1 },
+        "Oscillator 2 fine tune",
+        juce::NormalisableRange<float> { -50.0f, 50.0f, 0.1f },
+        0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                const auto rounded = juce::roundToInt (value * 10.0f) / 10.0f;
+
+                if (std::abs (rounded) < 0.05f)
+                    return juce::String ("0 ct");
+
+                const auto sign = rounded > 0.0f ? "+" : "";
+                return sign + juce::String (rounded, 1) + " ct";
+            })));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { oscMixParamId, 1 },
+        "Oscillator mix",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
+        0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value * 100.0f)) + "% 2";
+            })));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { oscSyncParamId, 1 },
+        "Oscillator sync",
+        false));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { filterCutoffParamId, 1 },
@@ -449,8 +658,17 @@ void NafTachyonAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     modWheelSmoother.reset (sampleRate, 0.05);
     pitchBendSmoother.reset (sampleRate, 0.01);
     pitchBendSmoother.setCurrentAndTargetValue (0.0f);
+    osc1PitchSmoother.reset (sampleRate, 0.02);
+    osc1PitchSmoother.setCurrentAndTargetValue (0.0f);
     pitchTuneSmoother.reset (sampleRate, 0.02);
     pitchTuneSmoother.setCurrentAndTargetValue (0.0f);
+    osc2PitchSmoother.reset (sampleRate, 0.02);
+    osc2PitchSmoother.setCurrentAndTargetValue (0.0f);
+    osc2PitchTuneSmoother.reset (sampleRate, 0.02);
+    osc2PitchTuneSmoother.setCurrentAndTargetValue (0.0f);
+    osc2PulseWidthSmoother.reset (sampleRate, filterSmoothingSeconds);
+    osc2OvertonesSmoother.reset (sampleRate, filterSmoothingSeconds);
+    oscMixSmoother.reset (sampleRate, filterSmoothingSeconds);
 
     if (auto* cutoff = apvts.getRawParameterValue (filterCutoffParamId))
         filterCutoffSmoother.setCurrentAndTargetValue (cutoff->load());
@@ -467,8 +685,26 @@ void NafTachyonAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     if (auto* amplitude = apvts.getRawParameterValue (amplitudeParamId))
         amplitudeSmoother.setCurrentAndTargetValue (amplitude->load());
 
+    if (auto* osc1Pitch = apvts.getRawParameterValue (osc1PitchParamId))
+        osc1PitchSmoother.setCurrentAndTargetValue (osc1Pitch->load());
+
     if (auto* pitchTune = apvts.getRawParameterValue (pitchTuneParamId))
         pitchTuneSmoother.setCurrentAndTargetValue (pitchTune->load());
+
+    if (auto* osc2Pitch = apvts.getRawParameterValue (osc2PitchParamId))
+        osc2PitchSmoother.setCurrentAndTargetValue (osc2Pitch->load());
+
+    if (auto* osc2PitchTune = apvts.getRawParameterValue (osc2PitchTuneParamId))
+        osc2PitchTuneSmoother.setCurrentAndTargetValue (osc2PitchTune->load());
+
+    if (auto* osc2PulseWidth = apvts.getRawParameterValue (osc2PulseWidthParamId))
+        osc2PulseWidthSmoother.setCurrentAndTargetValue (osc2PulseWidth->load());
+
+    if (auto* osc2Overtones = apvts.getRawParameterValue (osc2OvertonesParamId))
+        osc2OvertonesSmoother.setCurrentAndTargetValue (osc2Overtones->load());
+
+    if (auto* oscMix = apvts.getRawParameterValue (oscMixParamId))
+        oscMixSmoother.setCurrentAndTargetValue (oscMix->load());
 
     updateDcHighpassCoefficients();
     resetDcHighpassState();
@@ -547,6 +783,9 @@ void NafTachyonAudioProcessor::resetUnisonPhases (OscillatorVoice& voice)
         voice.unisonPhase[i] = 0.0;
         voice.unisonSubPhase[i] = 0.0;
         voice.unisonFifthPhase[i] = 0.0;
+        voice.unisonPhase2[i] = 0.0;
+        voice.unisonSubPhase2[i] = 0.0;
+        voice.unisonFifthPhase2[i] = 0.0;
     }
 }
 
@@ -555,18 +794,18 @@ void NafTachyonAudioProcessor::updateUnisonIncrements (OscillatorVoice& voice,
                                                        float unisonSpread)
 {
     const auto settings = calcUnisonSettings (unisonVoices, unisonSpread);
-    const auto baseIncrement = voice.phaseIncrement;
 
-    for (int i = 0; i < maxUnisonStack; ++i)
-    {
-        const auto detuneRatio = i < settings.count
-                               ? std::pow (2.0, settings.detuneCents[i] / 1200.0)
-                               : 1.0;
+    updateUnisonIncrementsForBase (voice.phaseIncrement,
+                                   voice.unisonPhaseIncrement,
+                                   voice.unisonSubPhaseIncrement,
+                                   voice.unisonFifthPhaseIncrement,
+                                   settings);
 
-        voice.unisonPhaseIncrement[i] = baseIncrement * detuneRatio;
-        voice.unisonSubPhaseIncrement[i] = voice.unisonPhaseIncrement[i] * 0.5;
-        voice.unisonFifthPhaseIncrement[i] = voice.unisonPhaseIncrement[i] * WaveformSynth::perfectFifthRatio;
-    }
+    updateUnisonIncrementsForBase (voice.phase2Increment,
+                                   voice.unisonPhase2Increment,
+                                   voice.unisonSubPhase2Increment,
+                                   voice.unisonFifthPhase2Increment,
+                                   settings);
 }
 
 NafTachyonAudioProcessor::FilterCoefficients NafTachyonAudioProcessor::makeFilterCoefficients (float cutoffHz,
@@ -738,6 +977,9 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
             voice.phase = 0.0;
             voice.subPhase = 0.0;
             voice.fifthPhase = 0.0;
+            voice.phase2 = 0.0;
+            voice.subPhase2 = 0.0;
+            voice.fifthPhase2 = 0.0;
             resetUnisonPhases (voice);
             voice.noteOnSample = globalSampleCounter;
             voice.modKnobSnapshot = knobSnapshot;
@@ -763,12 +1005,18 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
             voice.phase = 0.0;
             voice.subPhase = 0.0;
             voice.fifthPhase = 0.0;
+            voice.phase2 = 0.0;
+            voice.subPhase2 = 0.0;
+            voice.fifthPhase2 = 0.0;
             resetUnisonPhases (voice);
             voice.ampVelScale = ampVelScale;
             voice.cutoffVelScale = cutoffVelScale;
             voice.phaseIncrement = juce::MathConstants<double>::twoPi * frequency / currentSampleRate;
             voice.subPhaseIncrement = voice.phaseIncrement * 0.5;
             voice.fifthPhaseIncrement = voice.phaseIncrement * WaveformSynth::perfectFifthRatio;
+            voice.phase2Increment = voice.phaseIncrement;
+            voice.subPhase2Increment = voice.subPhaseIncrement;
+            voice.fifthPhase2Increment = voice.fifthPhaseIncrement;
             updateUnisonIncrements (voice,
                                     apvts.getRawParameterValue (unisonParamId)->load(),
                                     apvts.getRawParameterValue (unisonSpreadParamId)->load());
@@ -867,13 +1115,15 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto waveformMorphKnob = apvts.getRawParameterValue (waveformParamId)->load();
     const auto pulseWidthKnob = apvts.getRawParameterValue (pulseWidthParamId)->load();
     const auto overtonesKnob = apvts.getRawParameterValue (overtonesParamId)->load();
+    const auto osc2WaveformKnob = apvts.getRawParameterValue (osc2WaveformParamId)->load();
+    const auto osc2PulseWidthKnob = apvts.getRawParameterValue (osc2PulseWidthParamId)->load();
+    const auto osc2OvertonesKnob = apvts.getRawParameterValue (osc2OvertonesParamId)->load();
+    const auto oscSyncEnabled = apvts.getRawParameterValue (oscSyncParamId)->load() >= 0.5f;
     const auto cutoffKnob = apvts.getRawParameterValue (filterCutoffParamId)->load();
     const auto resonanceKnob = apvts.getRawParameterValue (filterResonanceParamId)->load();
     const auto unisonVoices = apvts.getRawParameterValue (unisonParamId)->load();
     const auto unisonSpread = apvts.getRawParameterValue (unisonSpreadParamId)->load();
     const auto unisonSettings = calcUnisonSettings (unisonVoices, unisonSpread);
-
-    modulationEnvelope.updateFromApvts (apvts);
 
     const auto shapeModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::shape, apvts);
     const auto widthModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::width, apvts);
@@ -881,6 +1131,12 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto cutoffModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::cutoff, apvts);
     const auto resonanceModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::resonance, apvts);
     const auto amplitudeModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::amplitude, apvts);
+
+    const auto anyLaneModEnabled = shapeModEnabled || widthModEnabled || overtonesModEnabled
+                               || cutoffModEnabled || resonanceModEnabled || amplitudeModEnabled;
+
+    if (anyLaneModEnabled)
+        modulationEnvelope.updateFromApvts (apvts);
 
     if (! widthModEnabled)
         pulseWidthSmoother.setTargetValue (pulseWidthKnob);
@@ -897,16 +1153,19 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     if (! amplitudeModEnabled)
         amplitudeSmoother.setTargetValue (amplitudeKnob);
 
-    const auto anyLaneModEnabled = shapeModEnabled || widthModEnabled || overtonesModEnabled
-                               || cutoffModEnabled || resonanceModEnabled || amplitudeModEnabled;
-
     const auto filterSlopeIndex = juce::jlimit (0, 2, static_cast<int> (std::round (apvts.getRawParameterValue (filterSlopeParamId)->load())));
     const auto filterSlope = static_cast<FilterSlope> (filterSlopeIndex);
     const auto filterLimiterIndex = juce::jlimit (0, 3, static_cast<int> (std::round (apvts.getRawParameterValue (filterLimiterParamId)->load())));
     const auto filterLimiterMode = static_cast<FilterLimiterMode> (filterLimiterIndex);
     const auto filterLimiterCoeffs = makeFilterLimiterCoeffs (filterLimiterMode);
     const auto releaseTimeSeconds = apvts.getRawParameterValue (releaseTimeParamId)->load();
+    osc1PitchSmoother.setTargetValue (apvts.getRawParameterValue (osc1PitchParamId)->load());
     pitchTuneSmoother.setTargetValue (apvts.getRawParameterValue (pitchTuneParamId)->load());
+    osc2PitchSmoother.setTargetValue (apvts.getRawParameterValue (osc2PitchParamId)->load());
+    osc2PitchTuneSmoother.setTargetValue (apvts.getRawParameterValue (osc2PitchTuneParamId)->load());
+    osc2PulseWidthSmoother.setTargetValue (osc2PulseWidthKnob);
+    osc2OvertonesSmoother.setTargetValue (osc2OvertonesKnob);
+    oscMixSmoother.setTargetValue (apvts.getRawParameterValue (oscMixParamId)->load());
 
     for (const auto metadata : midiMessages)
     {
@@ -929,7 +1188,26 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             pitchBendSmoother.setTargetValue (normalisedPitchWheel (message.getPitchWheelValue()));
     }
 
+    int activeVoiceCount = 0;
+
+    for (const auto& voice : voices)
+        if (voice.isActive)
+            ++activeVoiceCount;
+
     const auto numSamples = buffer.getNumSamples();
+
+    if (activeVoiceCount == 0)
+    {
+        globalSampleCounter += numSamples;
+        return;
+    }
+
+    for (auto& voice : voices)
+    {
+        if (voice.isActive)
+            updateUnisonIncrements (voice, unisonVoices, unisonSpread);
+    }
+
     const auto numOutputChannels = getTotalNumOutputChannels();
     constexpr float voiceGain = 0.2f;
 
@@ -937,13 +1215,27 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     {
         const auto modWheelDepth = modWheelSmoother.getNextValue();
         const auto pitchWheelNormalised = pitchBendSmoother.getNextValue();
-        const auto pitchRatio = pitchFineTuneRatio (pitchTuneSmoother.getNextValue())
-                              * vibratoPitchRatio (vibratoLfoPhase, modWheelDepth)
-                              * pitchBendRatio (pitchWheelNormalised);
+        const auto pitchBendVibrato = vibratoPitchRatio (vibratoLfoPhase, modWheelDepth)
+                                    * pitchBendRatio (pitchWheelNormalised);
+        const auto osc1PitchRatio = pitchBendVibrato
+                                  * pitchSemitoneRatio (osc1PitchSmoother.getNextValue())
+                                  * pitchFineTuneRatio (pitchTuneSmoother.getNextValue());
+        const auto osc2PitchRatio = pitchBendVibrato
+                                  * pitchSemitoneRatio (osc2PitchSmoother.getNextValue())
+                                  * pitchFineTuneRatio (osc2PitchTuneSmoother.getNextValue());
+        const auto oscMix = oscMixSmoother.getNextValue();
 
         vibratoLfoPhase += juce::MathConstants<double>::twoPi * static_cast<double> (vibratoRateHz)
                          / currentSampleRate;
         wrapPhase (vibratoLfoPhase);
+
+        const auto sharedPulseWidth = widthModEnabled ? pulseWidthKnob : pulseWidthSmoother.getNextValue();
+        const auto sharedOvertones = overtonesModEnabled ? overtonesKnob : overtonesSmoother.getNextValue();
+        const auto sharedCutoffHz = cutoffModEnabled ? cutoffKnob : filterCutoffSmoother.getNextValue();
+        const auto sharedResonance = resonanceModEnabled ? resonanceKnob : filterResonanceSmoother.getNextValue();
+        const auto sharedAmplitude = amplitudeModEnabled ? amplitudeKnob : amplitudeSmoother.getNextValue();
+        const auto sharedOsc2PulseWidth = osc2PulseWidthSmoother.getNextValue();
+        const auto sharedOsc2Overtones = osc2OvertonesSmoother.getNextValue();
 
         float outputSample = 0.0f;
 
@@ -970,11 +1262,14 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             }
 
             auto waveformMorph = waveformMorphKnob;
-            auto pulseWidth = pulseWidthKnob;
-            auto overtones = overtonesKnob;
-            auto cutoffHz = cutoffKnob;
-            auto resonance = resonanceKnob;
-            auto amplitude = amplitudeKnob;
+            auto pulseWidth = sharedPulseWidth;
+            auto overtones = sharedOvertones;
+            auto osc2WaveformMorph = osc2WaveformKnob;
+            auto osc2PulseWidth = sharedOsc2PulseWidth;
+            auto osc2Overtones = sharedOsc2Overtones;
+            auto cutoffHz = sharedCutoffHz;
+            auto resonance = sharedResonance;
+            auto amplitude = sharedAmplitude;
 
             if (anyLaneModEnabled)
             {
@@ -1023,62 +1318,72 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
             if (voice.inRelease)
                 amplitude = voice.releaseStartAmplitude * releaseGain;
-            else if (! amplitudeModEnabled)
-                amplitude = amplitudeSmoother.getNextValue();
-
-            if (! widthModEnabled)
-                pulseWidth = pulseWidthSmoother.getNextValue();
-
-            if (! overtonesModEnabled)
-                overtones = overtonesSmoother.getNextValue();
-
-            if (! cutoffModEnabled)
-                cutoffHz = filterCutoffSmoother.getNextValue();
 
             cutoffHz *= voice.cutoffVelScale;
             cutoffHz = juce::jlimit (20.0f, 20000.0f, cutoffHz);
 
-            if (! resonanceModEnabled)
-                resonance = filterResonanceSmoother.getNextValue();
+            float osc1Sample = 0.0f;
+            float osc2Sample = 0.0f;
 
-            updateUnisonIncrements (voice, unisonVoices, unisonSpread);
-
-            float oscSample = 0.0f;
-
-            const auto mainPhaseInc = voice.phaseIncrement * pitchRatio;
-            const auto subPhaseInc = voice.subPhaseIncrement * pitchRatio;
-            const auto fifthPhaseInc = voice.fifthPhaseIncrement * pitchRatio;
+            const auto osc1MainInc = voice.phaseIncrement * osc1PitchRatio;
+            const auto osc1SubInc = voice.subPhaseIncrement * osc1PitchRatio;
+            const auto osc1FifthInc = voice.fifthPhaseIncrement * osc1PitchRatio;
+            const auto osc2MainInc = voice.phase2Increment * osc2PitchRatio;
+            const auto osc2SubInc = voice.subPhase2Increment * osc2PitchRatio;
+            const auto osc2FifthInc = voice.fifthPhase2Increment * osc2PitchRatio;
 
             if (unisonSettings.count <= 1)
             {
-                oscSample = WaveformSynth::computeOscillatorSample (voice.phase,
-                                                                      mainPhaseInc,
-                                                                      voice.subPhase,
-                                                                      subPhaseInc,
-                                                                      voice.fifthPhase,
-                                                                      fifthPhaseInc,
-                                                                      waveformMorph,
-                                                                      pulseWidth,
-                                                                      overtones);
+                osc1Sample = computeOscLayerSample (voice.phase,
+                                                    osc1MainInc,
+                                                    voice.subPhase,
+                                                    osc1SubInc,
+                                                    voice.fifthPhase,
+                                                    osc1FifthInc,
+                                                    waveformMorph,
+                                                    pulseWidth,
+                                                    overtones);
+
+                osc2Sample = computeOscLayerSample (voice.phase2,
+                                                    osc2MainInc,
+                                                    voice.subPhase2,
+                                                    osc2SubInc,
+                                                    voice.fifthPhase2,
+                                                    osc2FifthInc,
+                                                    osc2WaveformMorph,
+                                                    osc2PulseWidth,
+                                                    osc2Overtones);
             }
             else
             {
                 for (int u = 0; u < unisonSettings.count; ++u)
                 {
-                    oscSample += WaveformSynth::computeOscillatorSample (voice.unisonPhase[u],
-                                                                         voice.unisonPhaseIncrement[u] * pitchRatio,
-                                                                         voice.unisonSubPhase[u],
-                                                                         voice.unisonSubPhaseIncrement[u] * pitchRatio,
-                                                                         voice.unisonFifthPhase[u],
-                                                                         voice.unisonFifthPhaseIncrement[u] * pitchRatio,
-                                                                         waveformMorph,
-                                                                         pulseWidth,
-                                                                         overtones);
+                    osc1Sample += computeOscLayerSample (voice.unisonPhase[u],
+                                                         voice.unisonPhaseIncrement[u] * osc1PitchRatio,
+                                                         voice.unisonSubPhase[u],
+                                                         voice.unisonSubPhaseIncrement[u] * osc1PitchRatio,
+                                                         voice.unisonFifthPhase[u],
+                                                         voice.unisonFifthPhaseIncrement[u] * osc1PitchRatio,
+                                                         waveformMorph,
+                                                         pulseWidth,
+                                                         overtones);
+
+                    osc2Sample += computeOscLayerSample (voice.unisonPhase2[u],
+                                                         voice.unisonPhase2Increment[u] * osc2PitchRatio,
+                                                         voice.unisonSubPhase2[u],
+                                                         voice.unisonSubPhase2Increment[u] * osc2PitchRatio,
+                                                         voice.unisonFifthPhase2[u],
+                                                         voice.unisonFifthPhase2Increment[u] * osc2PitchRatio,
+                                                         osc2WaveformMorph,
+                                                         osc2PulseWidth,
+                                                         osc2Overtones);
                 }
 
-                oscSample *= unisonSettings.normalise;
+                osc1Sample *= unisonSettings.normalise;
+                osc2Sample *= unisonSettings.normalise;
             }
 
+            auto oscSample = mixOscillatorSamples (osc1Sample, osc2Sample, oscMix);
             oscSample *= voice.ampVelScale * amplitude * voiceGain;
 
             const auto filterCoeffs = makeFilterCoefficients (cutoffHz, resonance, filterSlope);
@@ -1087,25 +1392,75 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             filteredSample = applyFilterLimiter (filteredSample, voice, filterLimiterCoeffs);
             outputSample += filteredSample;
 
+            const auto syncRatio = osc1MainInc > 1.0e-12
+                                 ? osc2MainInc / osc1MainInc
+                                 : 1.0;
+
             if (unisonSettings.count <= 1)
             {
-                voice.phase += mainPhaseInc;
-                voice.subPhase += subPhaseInc;
-                voice.fifthPhase += fifthPhaseInc;
-                wrapPhase (voice.phase);
+                bool masterWrapped = false;
+                advanceMasterPhase (voice.phase, osc1MainInc, masterWrapped);
+                juce::ignoreUnused (masterWrapped);
+                voice.subPhase += osc1SubInc;
+                voice.fifthPhase += osc1FifthInc;
                 wrapPhase (voice.subPhase);
                 wrapPhase (voice.fifthPhase);
+
+                if (oscSyncEnabled)
+                {
+                    syncSlavePhasesToMaster (voice.phase,
+                                             voice.subPhase,
+                                             voice.fifthPhase,
+                                             syncRatio,
+                                             voice.phase2,
+                                             voice.subPhase2,
+                                             voice.fifthPhase2);
+                }
+                else
+                {
+                    advanceFreeRunningPhases (voice.phase2,
+                                              voice.subPhase2,
+                                              voice.fifthPhase2,
+                                              osc2MainInc,
+                                              osc2SubInc,
+                                              osc2FifthInc);
+                }
             }
             else
             {
                 for (int u = 0; u < unisonSettings.count; ++u)
                 {
-                    voice.unisonPhase[u] += voice.unisonPhaseIncrement[u] * pitchRatio;
-                    voice.unisonSubPhase[u] += voice.unisonSubPhaseIncrement[u] * pitchRatio;
-                    voice.unisonFifthPhase[u] += voice.unisonFifthPhaseIncrement[u] * pitchRatio;
-                    wrapPhase (voice.unisonPhase[u]);
+                    const auto osc1MainIncU = voice.unisonPhaseIncrement[u] * osc1PitchRatio;
+                    const auto osc2MainIncU = voice.unisonPhase2Increment[u] * osc2PitchRatio;
+                    const auto syncRatioU = osc1MainIncU > 1.0e-12 ? osc2MainIncU / osc1MainIncU : 1.0;
+
+                    bool masterWrapped = false;
+                    advanceMasterPhase (voice.unisonPhase[u], osc1MainIncU, masterWrapped);
+                    juce::ignoreUnused (masterWrapped);
+                    voice.unisonSubPhase[u] += voice.unisonSubPhaseIncrement[u] * osc1PitchRatio;
+                    voice.unisonFifthPhase[u] += voice.unisonFifthPhaseIncrement[u] * osc1PitchRatio;
                     wrapPhase (voice.unisonSubPhase[u]);
                     wrapPhase (voice.unisonFifthPhase[u]);
+
+                    if (oscSyncEnabled)
+                    {
+                        syncSlavePhasesToMaster (voice.unisonPhase[u],
+                                                 voice.unisonSubPhase[u],
+                                                 voice.unisonFifthPhase[u],
+                                                 syncRatioU,
+                                                 voice.unisonPhase2[u],
+                                                 voice.unisonSubPhase2[u],
+                                                 voice.unisonFifthPhase2[u]);
+                    }
+                    else
+                    {
+                        advanceFreeRunningPhases (voice.unisonPhase2[u],
+                                                  voice.unisonSubPhase2[u],
+                                                  voice.unisonFifthPhase2[u],
+                                                  osc2MainIncU,
+                                                  voice.unisonSubPhase2Increment[u] * osc2PitchRatio,
+                                                  voice.unisonFifthPhase2Increment[u] * osc2PitchRatio);
+                    }
                 }
             }
         }
@@ -1121,7 +1476,8 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    applyDcHighpass (buffer);
+    if (activeVoiceCount > 0)
+        applyDcHighpass (buffer);
 
     globalSampleCounter += numSamples;
 }

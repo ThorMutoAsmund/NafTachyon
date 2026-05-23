@@ -1,3 +1,13 @@
+# V1.4.0
+- 24dB filter resonance twice as loud as 6/12dB
+- Pitch and finetune knobs
+- 2 oscialltors + Mix
+- Sync
+- Reduce CPU use caused by too many repaints
+
+
+
+
 # V1.3.0
 - Evolve lanes modulate knob baseline
 - Increase available points on evolve lanes to 12

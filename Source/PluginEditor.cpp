@@ -42,13 +42,19 @@ namespace
 
 
 
-    constexpr int maxDialSize = 120;
+    constexpr int minDialSize = 94;
+    constexpr int maxDialSize = 130;
+    constexpr int mainControlColumns = 4;
 
     constexpr int labelRowHeight = 18;
+    constexpr int sliderTextBoxHeight = 16;
+    constexpr int labelToKnobGap = 2;
 
     constexpr int sectionChromeHeight = 46;
 
-    constexpr int waveformPanelHeight = 160;
+    constexpr int waveformOscRows = 2;
+    constexpr int waveformOscKnobsPerRow = 5;
+    constexpr int waveformRowLabelWidth = 36;
 
     constexpr int evolvePanelHeight = 294;
 
@@ -58,50 +64,86 @@ namespace
 
 
 
-    int waveformPreviewWidthForArea (int contentWidth)
-
+    int knobStackHeightForDialSize (int dialSize)
     {
-
-        return juce::jmax (minWaveformPreviewWidth, contentWidth / 4);
-
+        return labelRowHeight + labelToKnobGap + dialSize + sliderTextBoxHeight;
     }
 
-
-
-    int computeUniformDialSize (juce::Rectangle<int> waveformContentBounds, int previewWidth)
-
+    int waveformPanelHeightForDialSize (int dialSize)
     {
-
-        auto dialArea = waveformContentBounds;
-
-        dialArea.removeFromRight (previewWidth);
-
-        dialArea.removeFromTop (labelRowHeight);
-
-        const auto columnWidth = dialArea.getWidth() / 4;
-
-        return juce::jmin (columnWidth, dialArea.getHeight(), maxDialSize);
-
+        return sectionChromeHeight + knobStackHeightForDialSize (dialSize) * waveformOscRows;
     }
 
+    int maxDialHeightInArea (int areaHeight)
+    {
+        return areaHeight - labelRowHeight - labelToKnobGap - sliderTextBoxHeight;
+    }
 
+    int waveformPreviewWidthForDialSize (int contentWidth, int dialSize)
+    {
+        const auto knobsWidth = waveformRowLabelWidth + waveformOscKnobsPerRow * dialSize;
+        return juce::jmax (minWaveformPreviewWidth, contentWidth - knobsWidth);
+    }
+
+    int computeUniformDialSize (int contentWidth)
+    {
+        const auto mainHeightLimit = maxDialHeightInArea (knobStackHeightForDialSize (maxDialSize));
+        const auto mainDialLimit = juce::jmin (contentWidth / mainControlColumns, mainHeightLimit);
+
+        const auto waveColumnLimit = (contentWidth - minWaveformPreviewWidth - waveformRowLabelWidth)
+                                   / waveformOscKnobsPerRow;
+
+        auto dialSize = juce::jlimit (minDialSize, maxDialSize,
+                                      juce::jmin (mainDialLimit, waveColumnLimit, contentWidth / 4));
+
+        const auto unisonWidth = juce::jmax (200, dialSize * 2 + 60);
+        const auto filterWidth = juce::jmax (1, contentWidth - unisonWidth);
+        dialSize = juce::jlimit (minDialSize, maxDialSize,
+                                 juce::jmin (dialSize, unisonWidth / 2, filterWidth / 4));
+
+        return dialSize;
+    }
+
+    constexpr int mainSyncRowHeight = 30;
 
     int panelHeightForDialSize (int dialSize)
-
     {
-
-        return dialSize + labelRowHeight + sectionChromeHeight;
-
+        return knobStackHeightForDialSize (dialSize) + sectionChromeHeight;
     }
 
-
-
-    void layoutCentredDial (juce::Slider& slider, juce::Rectangle<int> area, int dialSize)
-
+    int mainPanelHeightForDialSize (int dialSize)
     {
+        return knobStackHeightForDialSize (dialSize) + mainSyncRowHeight + sectionChromeHeight;
+    }
 
-        slider.setBounds (area.withSizeKeepingCentre (dialSize, dialSize));
+    struct LabelKnobRows
+    {
+        juce::Rectangle<int> labelRow;
+        juce::Rectangle<int> knobRow;
+    };
 
+    LabelKnobRows splitLabelAndKnobRows (juce::Rectangle<int>& area, int dialSize)
+    {
+        LabelKnobRows rows;
+        rows.labelRow = area.removeFromTop (labelRowHeight);
+        area.removeFromTop (labelToKnobGap);
+        rows.knobRow = area.removeFromTop (dialSize + sliderTextBoxHeight);
+        return rows;
+    }
+
+    void layoutKnobInColumn (juce::Slider& slider, juce::Rectangle<int> column, int dialSize)
+    {
+        const auto stackHeight = dialSize + sliderTextBoxHeight;
+        const auto x = column.getX() + (column.getWidth() - dialSize) / 2;
+        slider.setBounds (x, column.getY(), dialSize, stackHeight);
+    }
+
+    int minimumEditorHeightForDialSize (int dialSize)
+    {
+        return 40 + evolvePanelHeight + sectionGap * 3
+             + mainPanelHeightForDialSize (dialSize)
+             + waveformPanelHeightForDialSize (dialSize)
+             + panelHeightForDialSize (dialSize);
     }
 
 }
@@ -137,6 +179,11 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureKnob (mainGroup, amplitudeSlider, amplitudeLabel, "Gain");
 
+    configureKnob (mainGroup, oscMixSlider, oscMixLabel, "Mix");
+
+    configureToggleButton (oscSyncToggle);
+    mainGroup.addAndMakeVisible (oscSyncToggle);
+
     configureKnob (mainGroup, releaseTimeSlider, releaseTimeLabel, "Release Time");
 
     configureKnob (mainGroup, amplitudeVelSensitivitySlider, amplitudeVelSensitivityLabel, "Amp velocity");
@@ -149,7 +196,19 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     configureKnob (waveformGroup, overtonesSlider, overtonesLabel, "Harmonics");
 
-    configureKnob (waveformGroup, pitchTuneSlider, pitchTuneLabel, "Pitch");
+    configureKnob (waveformGroup, osc1PitchSlider, osc1PitchLabel, "Pitch");
+    configureKnob (waveformGroup, pitchTuneSlider, pitchTuneLabel, "Finetune");
+
+    configureSectionLabel (osc1RowLabel, "OSC 1", 10.0f);
+    configureSectionLabel (osc2RowLabel, "OSC 2", 10.0f);
+    waveformGroup.addAndMakeVisible (osc1RowLabel);
+    waveformGroup.addAndMakeVisible (osc2RowLabel);
+
+    configureKnob (waveformGroup, osc2WaveformSlider, osc2WaveformLabel, "Shape");
+    configureKnob (waveformGroup, osc2PulseWidthSlider, osc2PulseWidthLabel, "Width");
+    configureKnob (waveformGroup, osc2OvertonesSlider, osc2OvertonesLabel, "Harmonics");
+    configureKnob (waveformGroup, osc2PitchSlider, osc2PitchLabel, "Pitch");
+    configureKnob (waveformGroup, osc2PitchTuneSlider, osc2PitchTuneLabel, "Finetune");
 
     waveformGroup.addAndMakeVisible (waveformPreview);
 
@@ -201,7 +260,15 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
     overtonesAttachment  = std::make_unique<SliderAttachment> (apvts, "overtones",       overtonesSlider);
 
-    pitchTuneAttachment  = std::make_unique<SliderAttachment> (apvts, "pitchTune",       pitchTuneSlider);
+    osc1PitchAttachment    = std::make_unique<SliderAttachment> (apvts, "osc1Pitch",      osc1PitchSlider);
+    pitchTuneAttachment    = std::make_unique<SliderAttachment> (apvts, "pitchTune",      pitchTuneSlider);
+    osc2WaveformAttachment   = std::make_unique<SliderAttachment> (apvts, "osc2Waveform",   osc2WaveformSlider);
+    osc2PulseWidthAttachment = std::make_unique<SliderAttachment> (apvts, "osc2PulseWidth", osc2PulseWidthSlider);
+    osc2OvertonesAttachment  = std::make_unique<SliderAttachment> (apvts, "osc2Overtones",  osc2OvertonesSlider);
+    osc2PitchAttachment      = std::make_unique<SliderAttachment> (apvts, "osc2Pitch",      osc2PitchSlider);
+    osc2PitchTuneAttachment  = std::make_unique<SliderAttachment> (apvts, "osc2PitchTune",  osc2PitchTuneSlider);
+    oscMixAttachment         = std::make_unique<SliderAttachment> (apvts, "oscMix",         oscMixSlider);
+    oscSyncAttachment        = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, "oscSync", oscSyncToggle);
 
     cutoffAttachment     = std::make_unique<SliderAttachment> (apvts, "filterCutoff",    cutoffSlider);
 
@@ -226,7 +293,9 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
 
 
 
-    setSize (700, 838);
+    constexpr int editorWidth = 700;
+    const auto dialSize = computeUniformDialSize (editorWidth - 40);
+    setSize (editorWidth, minimumEditorHeightForDialSize (dialSize));
 
 }
 
@@ -302,6 +371,49 @@ NafTachyonAudioProcessorEditor::~NafTachyonAudioProcessorEditor()
 
 
 
+void NafTachyonAudioProcessorEditor::configureToggleButton (juce::ToggleButton& button)
+{
+    button.setWantsKeyboardFocus (false);
+    button.setMouseClickGrabsKeyboardFocus (false);
+    button.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffc8d0d6));
+    button.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xffff8c1a));
+    button.setColour (juce::ToggleButton::tickDisabledColourId, juce::Colour (0xff4a545c));
+}
+
+void NafTachyonAudioProcessorEditor::layoutWaveformOscRow (juce::Rectangle<int> rowArea,
+                                                           int dialSize,
+                                                           juce::Label& rowLabel,
+                                                           juce::Slider& shapeSlider,
+                                                           juce::Label& shapeLabel,
+                                                           juce::Slider& widthSlider,
+                                                           juce::Label& widthLabel,
+                                                           juce::Slider& harmonicsSlider,
+                                                           juce::Label& harmonicsLabel,
+                                                           juce::Slider& pitchSlider,
+                                                           juce::Label& pitchLabel,
+                                                           juce::Slider& fineTuneSlider,
+                                                           juce::Label& fineTuneLabel)
+{
+    auto rowLabelArea = rowArea.removeFromLeft (waveformRowLabelWidth);
+    rowLabel.setBounds (rowLabelArea);
+
+    const int columnWidth = rowArea.getWidth() / waveformOscKnobsPerRow;
+
+    auto rows = splitLabelAndKnobRows (rowArea, dialSize);
+
+    shapeLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    widthLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    harmonicsLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    pitchLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    fineTuneLabel.setBounds (rows.labelRow);
+
+    layoutKnobInColumn (shapeSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
+    layoutKnobInColumn (widthSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
+    layoutKnobInColumn (harmonicsSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
+    layoutKnobInColumn (pitchSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
+    layoutKnobInColumn (fineTuneSlider, rows.knobRow, dialSize);
+}
+
 void NafTachyonAudioProcessorEditor::configureKnob (juce::Component& parent,
 
                                                      juce::Slider& slider,
@@ -314,7 +426,7 @@ void NafTachyonAudioProcessorEditor::configureKnob (juce::Component& parent,
 
     slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
 
-    slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 64, 18);
+    slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 64, sliderTextBoxHeight);
 
     slider.setTextBoxIsEditable (false);
 
@@ -338,21 +450,28 @@ void NafTachyonAudioProcessorEditor::layoutMainControls (juce::Rectangle<int> ar
 
 {
 
-    const int columnWidth = area.getWidth() / 3;
+    const int columnWidth = area.getWidth() / mainControlColumns;
 
-    auto labelRow = area.removeFromTop (labelRowHeight);
+    auto rows = splitLabelAndKnobRows (area, dialSize);
 
-    amplitudeLabel.setBounds (labelRow.removeFromLeft (columnWidth));
+    amplitudeLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    oscMixLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    releaseTimeLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    amplitudeVelSensitivityLabel.setBounds (rows.labelRow);
 
-    releaseTimeLabel.setBounds (labelRow.removeFromLeft (columnWidth));
+    layoutKnobInColumn (amplitudeSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
 
-    amplitudeVelSensitivityLabel.setBounds (labelRow);
+    auto mixKnobColumn = rows.knobRow.removeFromLeft (columnWidth);
+    layoutKnobInColumn (oscMixSlider, mixKnobColumn, dialSize);
 
-    layoutCentredDial (amplitudeSlider, area.removeFromLeft (columnWidth), dialSize);
+    layoutKnobInColumn (releaseTimeSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
+    layoutKnobInColumn (amplitudeVelSensitivitySlider, rows.knobRow, dialSize);
 
-    layoutCentredDial (releaseTimeSlider, area.removeFromLeft (columnWidth), dialSize);
-
-    layoutCentredDial (amplitudeVelSensitivitySlider, area, dialSize);
+    auto syncBounds = juce::Rectangle<int> (mixKnobColumn.getX(),
+                                          rows.knobRow.getBottom() + 4,
+                                          columnWidth,
+                                          26);
+    oscSyncToggle.setBounds (syncBounds.reduced (2, 0));
 
 }
 
@@ -367,12 +486,12 @@ void NafTachyonAudioProcessorEditor::layoutUnisonControls (juce::Rectangle<int> 
 {
     const int columnWidth = area.getWidth() / 2;
 
-    auto labelRow = area.removeFromTop (labelRowHeight);
-    unisonLabel.setBounds (labelRow.removeFromLeft (columnWidth));
-    unisonSpreadLabel.setBounds (labelRow);
+    auto rows = splitLabelAndKnobRows (area, dialSize);
+    unisonLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    unisonSpreadLabel.setBounds (rows.labelRow);
 
-    layoutCentredDial (unisonSlider, area.removeFromLeft (columnWidth), dialSize);
-    layoutCentredDial (unisonSpreadSlider, area, dialSize);
+    layoutKnobInColumn (unisonSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
+    layoutKnobInColumn (unisonSpreadSlider, rows.knobRow, dialSize);
 }
 
 void NafTachyonAudioProcessorEditor::layoutFilterControls (juce::Rectangle<int> area, int dialSize)
@@ -381,33 +500,22 @@ void NafTachyonAudioProcessorEditor::layoutFilterControls (juce::Rectangle<int> 
 
     const int columnWidth = area.getWidth() / 4;
 
+    auto rows = splitLabelAndKnobRows (area, dialSize);
 
+    cutoffLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    resonanceLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    cutoffVelSensitivityLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
+    filterSlopeLabel.setBounds (rows.labelRow.removeFromLeft (columnWidth));
 
-    auto labelRow = area.removeFromTop (labelRowHeight);
+    layoutKnobInColumn (cutoffSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
+    layoutKnobInColumn (resonanceSlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
+    layoutKnobInColumn (cutoffVelSensitivitySlider, rows.knobRow.removeFromLeft (columnWidth), dialSize);
 
-    cutoffLabel.setBounds (labelRow.removeFromLeft (columnWidth));
-
-    resonanceLabel.setBounds (labelRow.removeFromLeft (columnWidth));
-
-    cutoffVelSensitivityLabel.setBounds (labelRow.removeFromLeft (columnWidth));
-
-    filterSlopeLabel.setBounds (labelRow);
-
-
-
-    layoutCentredDial (cutoffSlider, area.removeFromLeft (columnWidth), dialSize);
-
-    layoutCentredDial (resonanceSlider, area.removeFromLeft (columnWidth), dialSize);
-
-    layoutCentredDial (cutoffVelSensitivitySlider, area.removeFromLeft (columnWidth), dialSize);
-
-
-
-    auto comboColumn = area.reduced (8, 4);
-    comboColumn.removeFromTop (4);
+    auto comboColumn = rows.knobRow.reduced (6, 0);
     filterSlopeCombo.setBounds (comboColumn.removeFromTop (24));
-    comboColumn.removeFromTop (6);
+    comboColumn.removeFromTop (4);
     filterLimiterLabel.setBounds (comboColumn.removeFromTop (labelRowHeight));
+    comboColumn.removeFromTop (2);
     filterLimiterCombo.setBounds (comboColumn.removeFromTop (24));
 
 }
@@ -422,51 +530,36 @@ void NafTachyonAudioProcessorEditor::layoutWaveformControls (juce::Rectangle<int
 
     waveformPreview.setBounds (previewArea.reduced (2, 0));
 
+    const auto rowHeight = area.getHeight() / waveformOscRows;
 
+    auto osc1Row = area.removeFromTop (rowHeight);
+    layoutWaveformOscRow (osc1Row,
+                          dialSize,
+                          osc1RowLabel,
+                          waveformSlider,
+                          waveformLabel,
+                          pulseWidthSlider,
+                          pulseWidthLabel,
+                          overtonesSlider,
+                          overtonesLabel,
+                          osc1PitchSlider,
+                          osc1PitchLabel,
+                          pitchTuneSlider,
+                          pitchTuneLabel);
 
-    const int columnWidth = area.getWidth() / 4;
-
-
-
-    auto shapeColumn = area.removeFromLeft (columnWidth);
-
-    auto widthColumn = area.removeFromLeft (columnWidth);
-
-    auto overtonesColumn = area.removeFromLeft (columnWidth);
-
-    auto pitchTuneColumn = area;
-
-
-
-    auto shapeLabelRow = shapeColumn.removeFromTop (labelRowHeight);
-
-    waveformLabel.setBounds (shapeLabelRow);
-
-    layoutCentredDial (waveformSlider, shapeColumn, dialSize);
-
-
-
-    auto widthLabelRow = widthColumn.removeFromTop (labelRowHeight);
-
-    pulseWidthLabel.setBounds (widthLabelRow);
-
-    layoutCentredDial (pulseWidthSlider, widthColumn, dialSize);
-
-
-
-    auto overtonesLabelRow = overtonesColumn.removeFromTop (labelRowHeight);
-
-    overtonesLabel.setBounds (overtonesLabelRow);
-
-    layoutCentredDial (overtonesSlider, overtonesColumn, dialSize);
-
-
-
-    auto pitchTuneLabelRow = pitchTuneColumn.removeFromTop (labelRowHeight);
-
-    pitchTuneLabel.setBounds (pitchTuneLabelRow);
-
-    layoutCentredDial (pitchTuneSlider, pitchTuneColumn, dialSize);
+    layoutWaveformOscRow (area,
+                          dialSize,
+                          osc2RowLabel,
+                          osc2WaveformSlider,
+                          osc2WaveformLabel,
+                          osc2PulseWidthSlider,
+                          osc2PulseWidthLabel,
+                          osc2OvertonesSlider,
+                          osc2OvertonesLabel,
+                          osc2PitchSlider,
+                          osc2PitchLabel,
+                          osc2PitchTuneSlider,
+                          osc2PitchTuneLabel);
 
 }
 
@@ -486,75 +579,53 @@ void NafTachyonAudioProcessorEditor::resized()
 
 {
 
-    auto layoutArea = getLocalBounds().reduced (20);
-
-    {
-
-        auto measureArea = layoutArea;
-
-        const auto waveformArea = measureArea.removeFromBottom (waveformPanelHeight);
-
-        waveformGroup.setBounds (waveformArea);
-
-        const auto waveformContent = waveformGroup.getContentBounds();
-
-        const auto previewWidth = waveformPreviewWidthForArea (waveformContent.getWidth());
-
-        uniformDialSize = computeUniformDialSize (waveformContent, previewWidth);
-
-    }
-
-
-
     auto area = getLocalBounds().reduced (20);
 
-    const auto sectionPanelHeight = panelHeightForDialSize (uniformDialSize);
+    const auto contentWidth = area.getWidth();
+
+    uniformDialSize = computeUniformDialSize (contentWidth);
+
+    const auto mainPanelHeight = mainPanelHeightForDialSize (uniformDialSize);
+    const auto waveformPanelHeight = waveformPanelHeightForDialSize (uniformDialSize);
+    const auto filterPanelHeight = panelHeightForDialSize (uniformDialSize);
+
+    const auto previewWidth = waveformPreviewWidthForDialSize (contentWidth, uniformDialSize);
 
     const auto evolveArea = area.removeFromBottom (evolvePanelHeight);
 
     area.removeFromBottom (sectionGap);
 
-    auto filterRow = area.removeFromBottom (sectionPanelHeight);
+    const auto unisonWidth = unisonPanelWidthForDialSize (uniformDialSize);
+
+    auto filterRow = area.removeFromBottom (filterPanelHeight);
 
     area.removeFromBottom (sectionGap);
-
-    const auto unisonWidth = unisonPanelWidthForDialSize (uniformDialSize);
 
     const auto unisonArea = filterRow.removeFromRight (unisonWidth);
 
     const auto filterArea = filterRow;
 
-    const auto waveformArea = area.removeFromBottom (waveformPanelHeight);
+    auto y = area.getY();
 
-    area.removeFromBottom (sectionGap);
-
-    const auto mainArea = area;
-
-
-
-    mainGroup.setBounds (mainArea);
+    mainGroup.setBounds (area.getX(), y, contentWidth, mainPanelHeight);
 
     layoutMainControls (mainGroup.getContentBounds(), uniformDialSize);
 
+    y += mainPanelHeight + sectionGap;
 
+    waveformGroup.setBounds (area.getX(), y, contentWidth, waveformPanelHeight);
 
-    waveformGroup.setBounds (waveformArea);
+    layoutWaveformControls (waveformGroup.getContentBounds(), uniformDialSize, previewWidth);
 
-    layoutWaveformControls (waveformGroup.getContentBounds(), uniformDialSize,
+    y += waveformPanelHeight + sectionGap;
 
-                            waveformPreviewWidthForArea (waveformGroup.getContentBounds().getWidth()));
-
-
-
-    filterGroup.setBounds (filterArea);
+    filterGroup.setBounds (filterArea.getX(), y, filterArea.getWidth(), filterPanelHeight);
 
     layoutFilterControls (filterGroup.getContentBounds(), uniformDialSize);
 
-    unisonGroup.setBounds (unisonArea);
+    unisonGroup.setBounds (unisonArea.getX(), y, unisonArea.getWidth(), filterPanelHeight);
 
     layoutUnisonControls (unisonGroup.getContentBounds(), uniformDialSize);
-
-
 
     evolveGroup.setBounds (evolveArea);
 

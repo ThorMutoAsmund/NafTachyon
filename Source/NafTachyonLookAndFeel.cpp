@@ -66,7 +66,6 @@ void NafTachyonLookAndFeel::drawRotarySlider (juce::Graphics& g,
                                           static_cast<float> (height));
 
     bounds = bounds.reduced (4.0f, 2.0f);
-    bounds.removeFromBottom (20.0f);
 
     const auto centre = bounds.getCentre();
     const auto radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.46f;

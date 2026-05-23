@@ -179,7 +179,6 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
     ModEnvelopeParamIds::syncAllFirstPointsFromKnobs (apvts);
     attachKnobListeners();
     refreshEnvelopeFromApvts();
-    startTimerHz (15);
 }
 
 ModEnvelopeEditor::~ModEnvelopeEditor()
@@ -266,22 +265,22 @@ juce::ModifierKeys ModEnvelopeEditor::getRealtimeDragModifiers()
 
 void ModEnvelopeEditor::timerCallback()
 {
-    if (drag.active && drag.target == DragTarget::point && drag.index >= 0)
+    if (! drag.active || drag.target != DragTarget::point || drag.index < 0)
     {
-        const auto mods = getRealtimeDragModifiers();
-        const auto pos = getMouseXYRelative().toFloat();
-
-        if (mods != drag.lastPollModifiers
-            || pos.getDistanceFrom (drag.lastDragPosition) > 0.01f)
-        {
-            drag.lastPollModifiers = mods;
-            drag.lastDragPosition = pos;
-            updateActivePointDrag (pos, mods);
-            return;
-        }
+        stopTimer();
+        return;
     }
 
-    repaint();
+    const auto mods = getRealtimeDragModifiers();
+    const auto pos = getMouseXYRelative().toFloat();
+
+    if (mods != drag.lastPollModifiers
+        || pos.getDistanceFrom (drag.lastDragPosition) > 0.01f)
+    {
+        drag.lastPollModifiers = mods;
+        drag.lastDragPosition = pos;
+        updateActivePointDrag (pos, mods);
+    }
 }
 
 void ModEnvelopeEditor::refreshEnvelopeFromApvts()
@@ -1031,5 +1030,5 @@ void ModEnvelopeEditor::mouseUp (const juce::MouseEvent& e)
     drag.target = DragTarget::none;
     drag.index = -1;
     drag.lastPollModifiers = {};
-    startTimerHz (15);
+    stopTimer();
 }
