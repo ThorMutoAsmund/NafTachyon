@@ -11,13 +11,15 @@
 
 class ModEnvelopeEditor : public juce::Component,
                           private juce::Timer,
+                          private juce::AsyncUpdater,
                           private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     using Lane = ModulationEnvelope::Lane;
 
     explicit ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsToUse,
-                                std::function<float()> getHostBpm = [] { return 120.0f; });
+                                std::function<float()> getHostBpm = [] { return 120.0f; },
+                                std::function<void()> onEnvelopeApvtsChanged = nullptr);
 
     void paint (juce::Graphics& g) override;
     void resized() override;
@@ -28,6 +30,8 @@ public:
     void modifierKeysChanged (const juce::ModifierKeys& modifiers) override;
 
     void timerCallback() override;
+
+    void handleAsyncUpdate() override;
 
     void parameterChanged (const juce::String& parameterID, float newValue) override;
 
@@ -102,6 +106,7 @@ private:
 
     juce::AudioProcessorValueTreeState& apvts;
     std::function<float()> hostBpmProvider;
+    std::function<void()> envelopeApvtsChangedCallback;
     bool displayTimelineInBars = false;
     ModulationEnvelope envelope;
 

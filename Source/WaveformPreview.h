@@ -7,6 +7,7 @@
 #include <JuceHeader.h>
 
 class WaveformPreview : public juce::Component,
+                        private juce::AsyncUpdater,
                         private juce::AudioProcessorValueTreeState::Listener
 {
 public:
@@ -17,6 +18,8 @@ public:
     void mouseUp (const juce::MouseEvent& e) override;
 
 private:
+    void handleAsyncUpdate() override;
+
     void parameterChanged (const juce::String& parameterID, float newValue) override;
 
     void attachParameterListeners();

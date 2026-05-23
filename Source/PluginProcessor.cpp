@@ -774,6 +774,27 @@ void NafTachyonAudioProcessor::resetVoiceFilter (OscillatorVoice& voice)
     voice.biquad2Z1 = 0.0f;
     voice.biquad2Z2 = 0.0f;
     voice.limiterEnvelope = 0.0f;
+    voice.cachedFilterCutoff = -1.0f;
+    voice.cachedFilterResonance = -1.0f;
+}
+
+void NafTachyonAudioProcessor::updateVoiceFilterCache (OscillatorVoice& voice,
+                                                       float cutoffHz,
+                                                       float resonance,
+                                                       FilterSlope slope) const
+{
+    constexpr auto cutoffEpsilon = 5.0f;
+    constexpr auto resonanceEpsilon = 0.002f;
+
+    if (std::abs (cutoffHz - voice.cachedFilterCutoff) > cutoffEpsilon
+        || std::abs (resonance - voice.cachedFilterResonance) > resonanceEpsilon
+        || slope != voice.cachedFilterSlope)
+    {
+        voice.cachedFilterCoeffs = makeFilterCoefficients (cutoffHz, resonance, slope);
+        voice.cachedFilterCutoff = cutoffHz;
+        voice.cachedFilterResonance = resonance;
+        voice.cachedFilterSlope = slope;
+    }
 }
 
 void NafTachyonAudioProcessor::resetUnisonPhases (OscillatorVoice& voice)
@@ -987,6 +1008,7 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
                                     apvts.getRawParameterValue (unisonParamId)->load(),
                                     apvts.getRawParameterValue (unisonSpreadParamId)->load());
             resetVoiceFilter (voice);
+            markModulationEnvelopeDirty();
             return;
         }
     }
@@ -1021,6 +1043,7 @@ void NafTachyonAudioProcessor::startVoice (int midiNote, int velocity)
                                     apvts.getRawParameterValue (unisonParamId)->load(),
                                     apvts.getRawParameterValue (unisonSpreadParamId)->load());
             resetVoiceFilter (voice);
+            markModulationEnvelopeDirty();
             return;
         }
     }
@@ -1106,6 +1129,40 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     buffer.clear();
 
+    const auto numSamples = buffer.getNumSamples();
+
+    for (const auto metadata : midiMessages)
+    {
+        const auto message = metadata.getMessage();
+
+        if (message.isNoteOn())
+            startVoice (message.getNoteNumber(), message.getVelocity());
+        else if (message.isNoteOff())
+            releaseVoice (message.getNoteNumber());
+        else if (message.isAllNotesOff())
+            releaseAllVoices (false);
+        else if (message.isAllSoundOff())
+            releaseAllVoices (true);
+        else if (message.isController())
+        {
+            if (message.getControllerNumber() == 1)
+                modWheelSmoother.setTargetValue (message.getControllerValue() / 127.0f);
+        }
+        else if (message.isPitchWheel())
+            pitchBendSmoother.setTargetValue (normalisedPitchWheel (message.getPitchWheelValue()));
+    }
+
+    auto activeVoiceCount = 0;
+
+    for (const auto& voice : voices)
+        if (voice.isActive)
+            ++activeVoiceCount;
+
+    globalSampleCounter += numSamples;
+
+    if (activeVoiceCount == 0)
+        return;
+
     if (auto* hostPlayHead = getPlayHead())
         if (const auto position = hostPlayHead->getPosition())
             if (const auto bpm = position->getBpm())
@@ -1135,7 +1192,8 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto anyLaneModEnabled = shapeModEnabled || widthModEnabled || overtonesModEnabled
                                || cutoffModEnabled || resonanceModEnabled || amplitudeModEnabled;
 
-    if (anyLaneModEnabled)
+    if (anyLaneModEnabled
+        && modulationEnvelopeApvtsDirty.exchange (false, std::memory_order_acq_rel))
         modulationEnvelope.updateFromApvts (apvts);
 
     if (! widthModEnabled)
@@ -1166,41 +1224,6 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     osc2PulseWidthSmoother.setTargetValue (osc2PulseWidthKnob);
     osc2OvertonesSmoother.setTargetValue (osc2OvertonesKnob);
     oscMixSmoother.setTargetValue (apvts.getRawParameterValue (oscMixParamId)->load());
-
-    for (const auto metadata : midiMessages)
-    {
-        const auto message = metadata.getMessage();
-
-        if (message.isNoteOn())
-            startVoice (message.getNoteNumber(), message.getVelocity());
-        else if (message.isNoteOff())
-            releaseVoice (message.getNoteNumber());
-        else if (message.isAllNotesOff())
-            releaseAllVoices (false);
-        else if (message.isAllSoundOff())
-            releaseAllVoices (true);
-        else if (message.isController())
-        {
-            if (message.getControllerNumber() == 1)
-                modWheelSmoother.setTargetValue (message.getControllerValue() / 127.0f);
-        }
-        else if (message.isPitchWheel())
-            pitchBendSmoother.setTargetValue (normalisedPitchWheel (message.getPitchWheelValue()));
-    }
-
-    int activeVoiceCount = 0;
-
-    for (const auto& voice : voices)
-        if (voice.isActive)
-            ++activeVoiceCount;
-
-    const auto numSamples = buffer.getNumSamples();
-
-    if (activeVoiceCount == 0)
-    {
-        globalSampleCounter += numSamples;
-        return;
-    }
 
     for (auto& voice : voices)
     {
@@ -1386,9 +1409,9 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             auto oscSample = mixOscillatorSamples (osc1Sample, osc2Sample, oscMix);
             oscSample *= voice.ampVelScale * amplitude * voiceGain;
 
-            const auto filterCoeffs = makeFilterCoefficients (cutoffHz, resonance, filterSlope);
+            updateVoiceFilterCache (voice, cutoffHz, resonance, filterSlope);
 
-            auto filteredSample = filterSample (oscSample, voice, filterCoeffs, filterSlope);
+            auto filteredSample = filterSample (oscSample, voice, voice.cachedFilterCoeffs, filterSlope);
             filteredSample = applyFilterLimiter (filteredSample, voice, filterLimiterCoeffs);
             outputSample += filteredSample;
 
@@ -1476,10 +1499,7 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    if (activeVoiceCount > 0)
-        applyDcHighpass (buffer);
-
-    globalSampleCounter += numSamples;
+    applyDcHighpass (buffer);
 }
 
 //==============================================================================
@@ -1506,7 +1526,10 @@ void NafTachyonAudioProcessor::setStateInformation (const void* data, int sizeIn
     std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
 
     if (xml != nullptr && xml->hasTagName (apvts.state.getType()))
+    {
         apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        markModulationEnvelopeDirty();
+    }
 }
 
 //==============================================================================

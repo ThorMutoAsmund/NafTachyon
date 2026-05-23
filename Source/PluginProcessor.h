@@ -117,6 +117,9 @@ public:
     /** Last BPM from host playhead (audio thread); used for EVOLVE bar axis. Defaults to 120. */
     float getLiveHostBpm() const noexcept { return cachedHostBpm.load (std::memory_order_relaxed); }
 
+    /** Audio thread: refresh EVOLVE lane data from APVTS on the next active block. */
+    void markModulationEnvelopeDirty() noexcept { modulationEnvelopeApvtsDirty.store (true, std::memory_order_release); }
+
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
 
@@ -150,6 +153,30 @@ private:
     };
 
     static constexpr int maxUnisonStack = 5;
+
+    struct FilterCoefficients
+
+    {
+
+        float onePoleCoeff = 1.0f;
+
+        float b0 = 1.0f;
+
+        float b1 = 0.0f;
+
+        float b2 = 0.0f;
+
+        float a1 = 0.0f;
+
+        float a2 = 0.0f;
+
+        /** 6 dB mode: 0 = one-pole only, 1 = full resonant biquad blend. */
+        float sixDbResonantBlend = 0.0f;
+
+        /** 24 dB mode: scales output to match single-biquad peak level (~1 at low resonance). */
+        float peakGainCompensation = 1.0f;
+
+    };
 
     struct OscillatorVoice
 
@@ -223,6 +250,11 @@ private:
 
         ModKnobSnapshot modKnobSnapshot;
 
+        FilterCoefficients cachedFilterCoeffs;
+        float cachedFilterCutoff = -1.0f;
+        float cachedFilterResonance = -1.0f;
+        FilterSlope cachedFilterSlope = FilterSlope::sixDb;
+
     };
 
 
@@ -240,32 +272,6 @@ private:
         float releaseCoeff = 0.0f;
 
     };
-
-    struct FilterCoefficients
-
-    {
-
-        float onePoleCoeff = 1.0f;
-
-        float b0 = 1.0f;
-
-        float b1 = 0.0f;
-
-        float b2 = 0.0f;
-
-        float a1 = 0.0f;
-
-        float a2 = 0.0f;
-
-        /** 6 dB mode: 0 = one-pole only, 1 = full resonant biquad blend. */
-        float sixDbResonantBlend = 0.0f;
-
-        /** 24 dB mode: scales output to match single-biquad peak level (~1 at low resonance). */
-        float peakGainCompensation = 1.0f;
-
-    };
-
-
 
     static constexpr int maxVoices = 16;
 
@@ -286,6 +292,8 @@ private:
     void updateUnisonIncrements (OscillatorVoice& voice, float unisonVoices, float unisonSpread);
 
     FilterCoefficients makeFilterCoefficients (float cutoffHz, float resonance, FilterSlope slope) const;
+
+    void updateVoiceFilterCache (OscillatorVoice& voice, float cutoffHz, float resonance, FilterSlope slope) const;
 
     float filterSample (float input, OscillatorVoice& voice, const FilterCoefficients& coeffs, FilterSlope slope) const;
 
@@ -331,6 +339,8 @@ private:
     juce::AudioProcessorValueTreeState apvts;
 
     mutable std::atomic<float> cachedHostBpm { 120.0f };
+
+    std::atomic<bool> modulationEnvelopeApvtsDirty { true };
 
     //==============================================================================
 

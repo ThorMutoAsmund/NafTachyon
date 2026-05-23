@@ -106,9 +106,11 @@ namespace
 }
 
 ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsToUse,
-                                      std::function<float()> getHostBpm)
+                                      std::function<float()> getHostBpm,
+                                      std::function<void()> onEnvelopeApvtsChanged)
     : apvts (apvtsToUse),
-      hostBpmProvider (std::move (getHostBpm))
+      hostBpmProvider (std::move (getHostBpm)),
+      envelopeApvtsChangedCallback (std::move (onEnvelopeApvtsChanged))
 {
     setWantsKeyboardFocus (false);
     setMouseClickGrabsKeyboardFocus (false);
@@ -221,10 +223,13 @@ void ModEnvelopeEditor::parameterChanged (const juce::String& parameterID, float
 {
     juce::ignoreUnused (newValue);
 
+    if (! isShowing())
+        return;
+
     if (parameterID.contains ("Enabled") || parameterID.contains ("Loop"))
     {
         refreshEnvelopeFromApvts();
-        repaint();
+        triggerAsyncUpdate();
         return;
     }
 
@@ -233,6 +238,11 @@ void ModEnvelopeEditor::parameterChanged (const juce::String& parameterID, float
 
     ModEnvelopeParamIds::syncAllFirstPointsFromKnobs (apvts);
     refreshEnvelopeFromApvts();
+    triggerAsyncUpdate();
+}
+
+void ModEnvelopeEditor::handleAsyncUpdate()
+{
     repaint();
 }
 
@@ -286,6 +296,9 @@ void ModEnvelopeEditor::timerCallback()
 void ModEnvelopeEditor::refreshEnvelopeFromApvts()
 {
     envelope.updateFromApvts (apvts);
+
+    if (envelopeApvtsChangedCallback != nullptr)
+        envelopeApvtsChangedCallback();
 
     const auto lengthSeconds = envelope.getMaxTimeSeconds (activeLane);
     juce::String lengthText;

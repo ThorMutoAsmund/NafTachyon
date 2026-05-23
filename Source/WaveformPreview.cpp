@@ -82,8 +82,13 @@ void WaveformPreview::parameterChanged (const juce::String& parameterID, float n
 {
     juce::ignoreUnused (parameterID, newValue);
 
-    if (isVisible())
-        repaint();
+    if (isShowing())
+        triggerAsyncUpdate();
+}
+
+void WaveformPreview::handleAsyncUpdate()
+{
+    repaint();
 }
 
 void WaveformPreview::mouseUp (const juce::MouseEvent& e)
