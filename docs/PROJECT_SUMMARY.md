@@ -1,6 +1,6 @@
 # Nafai's Tachyon — Project Summary
 
-Handoff document for continuing development. Covers the full synth through **V1.3.0 / V1.4.0** work: dual oscillators, EVOLVE modulation, UI layout, and performance fixes.
+Handoff document for continuing development. Covers the full synth through **V1.4.0** work: dual oscillators, EVOLVE modulation, UI layout, and performance fixes.
 
 ---
 
@@ -12,7 +12,7 @@ Handoff document for continuing development. Covers the full synth through **V1.
 |---|---|
 | **Company** | TMA Research |
 | **Author** | Thor Muto Asmund (2026) |
-| **Version** | 1.3.0 in Projucer (readme also lists **V1.4.0** bullets for latest DSP/UI) |
+| **Version** | 1.4.0 |
 | **Build** | Visual Studio 2022 — primary target **`Nafai's Tachyon_SharedCode.vcxproj`** (+ VST3 / Standalone) |
 | **Editor size** | **700×~1020–1190 px** (height from `minimumEditorHeightForDialSize`) |
 

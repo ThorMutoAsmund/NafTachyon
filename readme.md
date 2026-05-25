@@ -2,11 +2,11 @@
 - 24dB filter resonance twice as loud as 6/12dB
 - Pitch and finetune knobs
 - 2 oscialltors + Mix
+- Wave display can be toggled between OSCs
 - Sync
-- Reduce CPU use caused by too many repaints
-
-
-
+- Reduce CPU usage caused by too many repaints
+- Pitch evolve lanes
+- Separate evolve lines for the two OSCs (click to toggle)
 
 # V1.3.0
 - Evolve lanes modulate knob baseline
