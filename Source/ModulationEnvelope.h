@@ -11,6 +11,11 @@ struct ModulatedParams
     float shape = 0.0f;
     float pulseWidth = 0.0f;
     float overtones = 0.0f;
+    float pitch = 0.0f;
+    float osc2Shape = 0.0f;
+    float osc2PulseWidth = 0.0f;
+    float osc2Overtones = 0.0f;
+    float osc2Pitch = 0.0f;
     float cutoffHz = 20000.0f;
     float resonance = 0.0f;
     float amplitude = 1.0f;
@@ -39,7 +44,7 @@ class ModulationEnvelope
 public:
     static constexpr int maxPoints = modEnvelopeMaxPoints;
     static constexpr int maxSegments = maxPoints - 1;
-    static constexpr int numLanes = 6;
+    static constexpr int numLanes = 11;
 
     /** Segment curve in [-1, 1]: 0 = linear; nonzero = exponential bend (true exp, not power ease). */
     static float applySegmentT (float t, float curve);
@@ -54,6 +59,11 @@ public:
         shape = 0,
         width,
         overtones,
+        pitch,
+        osc2Shape,
+        osc2Width,
+        osc2Overtones,
+        osc2Pitch,
         cutoff,
         resonance,
         amplitude
@@ -94,6 +104,11 @@ struct ModKnobSnapshot
     float shape = 0.0f;
     float pulseWidth = 0.0f;
     float overtones = 0.0f;
+    float pitch = 0.0f;
+    float osc2Shape = 0.0f;
+    float osc2PulseWidth = 0.0f;
+    float osc2Overtones = 0.0f;
+    float osc2Pitch = 0.0f;
     float cutoffHz = 20000.0f;
     float resonance = 0.0f;
     float amplitude = 1.0f;

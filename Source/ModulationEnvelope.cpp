@@ -21,6 +21,11 @@ namespace
         { "modShape",     1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on shape knob
         { "modWidth",     0.0f,     -1.0f,      1.0f,      0.0f,  false }, // offset added to width knob
         { "modOvertones", 1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on harmonics knob
+        { "modPitch",     0.0f,    -48.0f,     48.0f,      0.0f,  false }, // semitone offset added to osc 1 pitch knob
+        { "modOsc2Shape",     1.0f,  0.0f,      1.0f,      0.0f,  false }, // multiplier on osc 2 shape knob
+        { "modOsc2Width",     0.0f, -1.0f,      1.0f,      0.0f,  false }, // offset added to osc 2 width knob
+        { "modOsc2Overtones", 1.0f,  0.0f,      1.0f,      0.0f,  false }, // multiplier on osc 2 harmonics knob
+        { "modOsc2Pitch",     0.0f, -48.0f,     48.0f,      0.0f,  false }, // semitone offset added to osc 2 pitch knob
         { "modCutoff",    1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on cutoff knob
         { "modResonance", 1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on resonance knob
         { "modAmplitude", 1.0f,      0.0f,      1.0f,      0.0f,  false }, // multiplier on amplitude knob
@@ -42,11 +47,16 @@ namespace
         {
             case ModulationEnvelope::Lane::shape:
             case ModulationEnvelope::Lane::overtones:
+            case ModulationEnvelope::Lane::osc2Shape:
+            case ModulationEnvelope::Lane::osc2Overtones:
             case ModulationEnvelope::Lane::cutoff:
             case ModulationEnvelope::Lane::resonance:
             case ModulationEnvelope::Lane::amplitude:
                 return true;
             case ModulationEnvelope::Lane::width:
+            case ModulationEnvelope::Lane::pitch:
+            case ModulationEnvelope::Lane::osc2Width:
+            case ModulationEnvelope::Lane::osc2Pitch:
                 return false;
         }
 
@@ -55,7 +65,10 @@ namespace
 
     bool isKnobOffsetLane (ModulationEnvelope::Lane lane)
     {
-        return lane == ModulationEnvelope::Lane::width;
+        return lane == ModulationEnvelope::Lane::width
+            || lane == ModulationEnvelope::Lane::pitch
+            || lane == ModulationEnvelope::Lane::osc2Width
+            || lane == ModulationEnvelope::Lane::osc2Pitch;
     }
 }
 
@@ -209,7 +222,9 @@ void ModulationEnvelope::updateFromApvts (juce::AudioProcessorValueTreeState& ap
             if (isKnobMultiplierLane (lane) && (value > 1.0f || value < 0.0f))
                 value = 1.0f;
             else if (isKnobOffsetLane (lane))
-                value = juce::jlimit (-1.0f, 1.0f, value);
+                value = juce::jlimit (getLaneDefinition (lane).minValue,
+                                      getLaneDefinition (lane).maxValue,
+                                      value);
 
             point.value = value;
         }
@@ -268,6 +283,11 @@ float ModKnobSnapshot::getValue (ModulationEnvelope::Lane lane) const
         case ModulationEnvelope::Lane::shape:     return shape;
         case ModulationEnvelope::Lane::width:     return pulseWidth;
         case ModulationEnvelope::Lane::overtones: return overtones;
+        case ModulationEnvelope::Lane::pitch:     return pitch;
+        case ModulationEnvelope::Lane::osc2Shape:     return osc2Shape;
+        case ModulationEnvelope::Lane::osc2Width:     return osc2PulseWidth;
+        case ModulationEnvelope::Lane::osc2Overtones: return osc2Overtones;
+        case ModulationEnvelope::Lane::osc2Pitch:     return osc2Pitch;
         case ModulationEnvelope::Lane::cutoff:    return cutoffHz;
         case ModulationEnvelope::Lane::resonance: return resonance;
         case ModulationEnvelope::Lane::amplitude: return amplitude;
@@ -283,6 +303,11 @@ juce::String ModEnvelopeParamIds::knobParameterId (ModulationEnvelope::Lane lane
         case ModulationEnvelope::Lane::shape:     return "waveform";
         case ModulationEnvelope::Lane::width:     return "pulseWidth";
         case ModulationEnvelope::Lane::overtones: return "overtones";
+        case ModulationEnvelope::Lane::pitch:     return "osc1Pitch";
+        case ModulationEnvelope::Lane::osc2Shape:     return "osc2Waveform";
+        case ModulationEnvelope::Lane::osc2Width:     return "osc2PulseWidth";
+        case ModulationEnvelope::Lane::osc2Overtones: return "osc2Overtones";
+        case ModulationEnvelope::Lane::osc2Pitch:     return "osc2Pitch";
         case ModulationEnvelope::Lane::cutoff:    return "filterCutoff";
         case ModulationEnvelope::Lane::resonance: return "filterResonance";
         case ModulationEnvelope::Lane::amplitude: return "amplitude";
@@ -311,6 +336,11 @@ ModKnobSnapshot ModEnvelopeParamIds::readKnobSnapshot (juce::AudioProcessorValue
     snapshot.shape = readKnobValue (ModulationEnvelope::Lane::shape, apvts);
     snapshot.pulseWidth = readKnobValue (ModulationEnvelope::Lane::width, apvts);
     snapshot.overtones = readKnobValue (ModulationEnvelope::Lane::overtones, apvts);
+    snapshot.pitch = readKnobValue (ModulationEnvelope::Lane::pitch, apvts);
+    snapshot.osc2Shape = readKnobValue (ModulationEnvelope::Lane::osc2Shape, apvts);
+    snapshot.osc2PulseWidth = readKnobValue (ModulationEnvelope::Lane::osc2Width, apvts);
+    snapshot.osc2Overtones = readKnobValue (ModulationEnvelope::Lane::osc2Overtones, apvts);
+    snapshot.osc2Pitch = readKnobValue (ModulationEnvelope::Lane::osc2Pitch, apvts);
     snapshot.cutoffHz = readKnobValue (ModulationEnvelope::Lane::cutoff, apvts);
     snapshot.resonance = readKnobValue (ModulationEnvelope::Lane::resonance, apvts);
     snapshot.amplitude = readKnobValue (ModulationEnvelope::Lane::amplitude, apvts);
@@ -431,6 +461,26 @@ ModulatedParams ModulationEnvelope::evaluate (float elapsedSeconds, const ModKno
     const auto& overtonesLane = lanes[static_cast<size_t> (Lane::overtones)];
     const auto overtonesMultiplier = interpolateLaneAbsolute (overtonesLane, elapsedSeconds, overtonesLane.loopEnabled);
     result.overtones = juce::jlimit (0.0f, 1.0f, knobSnapshot.overtones * overtonesMultiplier);
+
+    const auto& pitchLane = lanes[static_cast<size_t> (Lane::pitch)];
+    const auto pitchOffset = interpolateLaneAbsolute (pitchLane, elapsedSeconds, pitchLane.loopEnabled);
+    result.pitch = juce::jlimit (-48.0f, 48.0f, knobSnapshot.pitch + pitchOffset);
+
+    const auto& osc2ShapeLane = lanes[static_cast<size_t> (Lane::osc2Shape)];
+    const auto osc2ShapeMultiplier = interpolateLaneAbsolute (osc2ShapeLane, elapsedSeconds, osc2ShapeLane.loopEnabled);
+    result.osc2Shape = juce::jlimit (0.0f, 1.0f, knobSnapshot.osc2Shape * osc2ShapeMultiplier);
+
+    const auto& osc2WidthLane = lanes[static_cast<size_t> (Lane::osc2Width)];
+    const auto osc2WidthOffset = interpolateLaneAbsolute (osc2WidthLane, elapsedSeconds, osc2WidthLane.loopEnabled);
+    result.osc2PulseWidth = juce::jlimit (-1.0f, 1.0f, knobSnapshot.osc2PulseWidth + osc2WidthOffset);
+
+    const auto& osc2OvertonesLane = lanes[static_cast<size_t> (Lane::osc2Overtones)];
+    const auto osc2OvertonesMultiplier = interpolateLaneAbsolute (osc2OvertonesLane, elapsedSeconds, osc2OvertonesLane.loopEnabled);
+    result.osc2Overtones = juce::jlimit (0.0f, 1.0f, knobSnapshot.osc2Overtones * osc2OvertonesMultiplier);
+
+    const auto& osc2PitchLane = lanes[static_cast<size_t> (Lane::osc2Pitch)];
+    const auto osc2PitchOffset = interpolateLaneAbsolute (osc2PitchLane, elapsedSeconds, osc2PitchLane.loopEnabled);
+    result.osc2Pitch = juce::jlimit (-48.0f, 48.0f, knobSnapshot.osc2Pitch + osc2PitchOffset);
 
     const auto& cutoffLane = lanes[static_cast<size_t> (Lane::cutoff)];
     const auto cutoffMultiplier = interpolateLaneAbsolute (cutoffLane, elapsedSeconds, cutoffLane.loopEnabled);

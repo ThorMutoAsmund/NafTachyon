@@ -1185,11 +1185,18 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto shapeModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::shape, apvts);
     const auto widthModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::width, apvts);
     const auto overtonesModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::overtones, apvts);
+    const auto pitchModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::pitch, apvts);
+    const auto osc2ShapeModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::osc2Shape, apvts);
+    const auto osc2WidthModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::osc2Width, apvts);
+    const auto osc2OvertonesModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::osc2Overtones, apvts);
+    const auto osc2PitchModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::osc2Pitch, apvts);
     const auto cutoffModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::cutoff, apvts);
     const auto resonanceModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::resonance, apvts);
     const auto amplitudeModEnabled = modulationEnvelope.isLaneEnabled (ModulationEnvelope::Lane::amplitude, apvts);
 
     const auto anyLaneModEnabled = shapeModEnabled || widthModEnabled || overtonesModEnabled
+                               || pitchModEnabled
+                               || osc2ShapeModEnabled || osc2WidthModEnabled || osc2OvertonesModEnabled || osc2PitchModEnabled
                                || cutoffModEnabled || resonanceModEnabled || amplitudeModEnabled;
 
     if (anyLaneModEnabled
@@ -1201,6 +1208,12 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     if (! overtonesModEnabled)
         overtonesSmoother.setTargetValue (overtonesKnob);
+
+    if (! osc2WidthModEnabled)
+        osc2PulseWidthSmoother.setTargetValue (osc2PulseWidthKnob);
+
+    if (! osc2OvertonesModEnabled)
+        osc2OvertonesSmoother.setTargetValue (osc2OvertonesKnob);
 
     if (! cutoffModEnabled)
         filterCutoffSmoother.setTargetValue (cutoffKnob);
@@ -1221,8 +1234,6 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     pitchTuneSmoother.setTargetValue (apvts.getRawParameterValue (pitchTuneParamId)->load());
     osc2PitchSmoother.setTargetValue (apvts.getRawParameterValue (osc2PitchParamId)->load());
     osc2PitchTuneSmoother.setTargetValue (apvts.getRawParameterValue (osc2PitchTuneParamId)->load());
-    osc2PulseWidthSmoother.setTargetValue (osc2PulseWidthKnob);
-    osc2OvertonesSmoother.setTargetValue (osc2OvertonesKnob);
     oscMixSmoother.setTargetValue (apvts.getRawParameterValue (oscMixParamId)->load());
 
     for (auto& voice : voices)
@@ -1240,12 +1251,10 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         const auto pitchWheelNormalised = pitchBendSmoother.getNextValue();
         const auto pitchBendVibrato = vibratoPitchRatio (vibratoLfoPhase, modWheelDepth)
                                     * pitchBendRatio (pitchWheelNormalised);
-        const auto osc1PitchRatio = pitchBendVibrato
-                                  * pitchSemitoneRatio (osc1PitchSmoother.getNextValue())
-                                  * pitchFineTuneRatio (pitchTuneSmoother.getNextValue());
-        const auto osc2PitchRatio = pitchBendVibrato
-                                  * pitchSemitoneRatio (osc2PitchSmoother.getNextValue())
-                                  * pitchFineTuneRatio (osc2PitchTuneSmoother.getNextValue());
+        const auto sharedOsc1PitchSemitones = osc1PitchSmoother.getNextValue();
+        const auto sharedOsc1FineTuneRatio = pitchFineTuneRatio (pitchTuneSmoother.getNextValue());
+        const auto sharedOsc2PitchSemitones = osc2PitchSmoother.getNextValue();
+        const auto sharedOsc2FineTuneRatio = pitchFineTuneRatio (osc2PitchTuneSmoother.getNextValue());
         const auto oscMix = oscMixSmoother.getNextValue();
 
         vibratoLfoPhase += juce::MathConstants<double>::twoPi * static_cast<double> (vibratoRateHz)
@@ -1257,8 +1266,8 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         const auto sharedCutoffHz = cutoffModEnabled ? cutoffKnob : filterCutoffSmoother.getNextValue();
         const auto sharedResonance = resonanceModEnabled ? resonanceKnob : filterResonanceSmoother.getNextValue();
         const auto sharedAmplitude = amplitudeModEnabled ? amplitudeKnob : amplitudeSmoother.getNextValue();
-        const auto sharedOsc2PulseWidth = osc2PulseWidthSmoother.getNextValue();
-        const auto sharedOsc2Overtones = osc2OvertonesSmoother.getNextValue();
+        const auto sharedOsc2PulseWidth = osc2WidthModEnabled ? osc2PulseWidthKnob : osc2PulseWidthSmoother.getNextValue();
+        const auto sharedOsc2Overtones = osc2OvertonesModEnabled ? osc2OvertonesKnob : osc2OvertonesSmoother.getNextValue();
 
         float outputSample = 0.0f;
 
@@ -1287,9 +1296,11 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             auto waveformMorph = waveformMorphKnob;
             auto pulseWidth = sharedPulseWidth;
             auto overtones = sharedOvertones;
+            auto osc1PitchSemitones = sharedOsc1PitchSemitones;
             auto osc2WaveformMorph = osc2WaveformKnob;
             auto osc2PulseWidth = sharedOsc2PulseWidth;
             auto osc2Overtones = sharedOsc2Overtones;
+            auto osc2PitchSemitones = sharedOsc2PitchSemitones;
             auto cutoffHz = sharedCutoffHz;
             auto resonance = sharedResonance;
             auto amplitude = sharedAmplitude;
@@ -1308,6 +1319,21 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
                 if (overtonesModEnabled)
                     knobSnapshot.overtones = overtonesKnob;
+
+                if (pitchModEnabled)
+                    knobSnapshot.pitch = sharedOsc1PitchSemitones;
+
+                if (osc2ShapeModEnabled)
+                    knobSnapshot.osc2Shape = osc2WaveformKnob;
+
+                if (osc2WidthModEnabled)
+                    knobSnapshot.osc2PulseWidth = osc2PulseWidthKnob;
+
+                if (osc2OvertonesModEnabled)
+                    knobSnapshot.osc2Overtones = osc2OvertonesKnob;
+
+                if (osc2PitchModEnabled)
+                    knobSnapshot.osc2Pitch = sharedOsc2PitchSemitones;
 
                 if (cutoffModEnabled)
                     knobSnapshot.cutoffHz = cutoffKnob;
@@ -1329,6 +1355,21 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 if (overtonesModEnabled)
                     overtones = modParams.overtones;
 
+                if (pitchModEnabled)
+                    osc1PitchSemitones = modParams.pitch;
+
+                if (osc2ShapeModEnabled)
+                    osc2WaveformMorph = modParams.osc2Shape;
+
+                if (osc2WidthModEnabled)
+                    osc2PulseWidth = modParams.osc2PulseWidth;
+
+                if (osc2OvertonesModEnabled)
+                    osc2Overtones = modParams.osc2Overtones;
+
+                if (osc2PitchModEnabled)
+                    osc2PitchSemitones = modParams.osc2Pitch;
+
                 if (cutoffModEnabled)
                     cutoffHz = modParams.cutoffHz;
 
@@ -1344,6 +1385,13 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
             cutoffHz *= voice.cutoffVelScale;
             cutoffHz = juce::jlimit (20.0f, 20000.0f, cutoffHz);
+
+            const auto osc1PitchRatio = pitchBendVibrato
+                                      * pitchSemitoneRatio (osc1PitchSemitones)
+                                      * sharedOsc1FineTuneRatio;
+            const auto osc2PitchRatio = pitchBendVibrato
+                                      * pitchSemitoneRatio (osc2PitchSemitones)
+                                      * sharedOsc2FineTuneRatio;
 
             float osc1Sample = 0.0f;
             float osc2Sample = 0.0f;

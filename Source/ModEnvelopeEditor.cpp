@@ -12,7 +12,7 @@ namespace
     constexpr int toolbarBottomGap = 10;
     constexpr int timeAxisHeight = 16;
     constexpr int laneStripWidth = 82;
-    constexpr int numLaneStripRows = 6;
+    constexpr int numLaneStripRows = 7;
 
     const juce::Colour majorVerticalGridColour { 0xff2a3238 };
     const juce::Colour minorVerticalGridColour { 0xff252d33 };
@@ -27,11 +27,84 @@ namespace
         ModulationEnvelope::Lane::shape,
         ModulationEnvelope::Lane::width,
         ModulationEnvelope::Lane::overtones,
+        ModulationEnvelope::Lane::pitch,
     };
 
     ModulationEnvelope::Lane laneForStripRow (int rowIndex)
     {
         return laneSelectorOrder[juce::jlimit (0, numLaneStripRows - 1, rowIndex)];
+    }
+
+    bool stripRowSupportsOscToggle (ModulationEnvelope::Lane lane)
+    {
+        switch (lane)
+        {
+            case ModulationEnvelope::Lane::shape:
+            case ModulationEnvelope::Lane::width:
+            case ModulationEnvelope::Lane::overtones:
+            case ModulationEnvelope::Lane::pitch:
+                return true;
+            case ModulationEnvelope::Lane::osc2Shape:
+            case ModulationEnvelope::Lane::osc2Width:
+            case ModulationEnvelope::Lane::osc2Overtones:
+            case ModulationEnvelope::Lane::osc2Pitch:
+            case ModulationEnvelope::Lane::cutoff:
+            case ModulationEnvelope::Lane::resonance:
+            case ModulationEnvelope::Lane::amplitude:
+                return false;
+        }
+
+        return false;
+    }
+
+    ModulationEnvelope::Lane osc2VariantForStripRow (ModulationEnvelope::Lane lane)
+    {
+        switch (lane)
+        {
+            case ModulationEnvelope::Lane::shape:     return ModulationEnvelope::Lane::osc2Shape;
+            case ModulationEnvelope::Lane::width:     return ModulationEnvelope::Lane::osc2Width;
+            case ModulationEnvelope::Lane::overtones: return ModulationEnvelope::Lane::osc2Overtones;
+            case ModulationEnvelope::Lane::pitch:     return ModulationEnvelope::Lane::osc2Pitch;
+            case ModulationEnvelope::Lane::osc2Shape:
+            case ModulationEnvelope::Lane::osc2Width:
+            case ModulationEnvelope::Lane::osc2Overtones:
+            case ModulationEnvelope::Lane::osc2Pitch:
+            case ModulationEnvelope::Lane::cutoff:
+            case ModulationEnvelope::Lane::resonance:
+            case ModulationEnvelope::Lane::amplitude:
+                return lane;
+        }
+
+        return lane;
+    }
+
+    bool laneMatchesStripRow (ModulationEnvelope::Lane lane, ModulationEnvelope::Lane rowLane)
+    {
+        return lane == rowLane
+            || (stripRowSupportsOscToggle (rowLane) && lane == osc2VariantForStripRow (rowLane));
+    }
+
+    ModulationEnvelope::Lane laneForStripRowClick (ModulationEnvelope::Lane rowLane,
+                                                   ModulationEnvelope::Lane activeLane)
+    {
+        if (! stripRowSupportsOscToggle (rowLane))
+            return rowLane;
+
+        const auto osc2Lane = osc2VariantForStripRow (rowLane);
+
+        if (activeLane == rowLane)
+            return osc2Lane;
+
+        if (activeLane == osc2Lane)
+            return rowLane;
+
+        return rowLane;
+    }
+
+    ModulationEnvelope::Lane displayedLaneForStripRow (ModulationEnvelope::Lane rowLane,
+                                                       ModulationEnvelope::Lane activeLane)
+    {
+        return laneMatchesStripRow (activeLane, rowLane) ? activeLane : rowLane;
     }
 
     void drawDottedVerticalGridLine (juce::Graphics& g,
@@ -185,7 +258,10 @@ ModEnvelopeEditor::ModEnvelopeEditor (juce::AudioProcessorValueTreeState& apvtsT
 
 ModEnvelopeEditor::~ModEnvelopeEditor()
 {
-    for (const auto& id : { "waveform", "pulseWidth", "overtones", "filterCutoff", "filterResonance", "amplitude" })
+    for (const auto& id : { "waveform", "pulseWidth", "overtones",
+                            "osc1Pitch",
+                            "osc2Waveform", "osc2PulseWidth", "osc2Overtones", "osc2Pitch",
+                            "filterCutoff", "filterResonance", "amplitude" })
         apvts.removeParameterListener (id, this);
 
     for (int laneIndex = 0; laneIndex < ModulationEnvelope::numLanes; ++laneIndex)
@@ -201,6 +277,11 @@ bool ModEnvelopeEditor::isMainKnobParameter (const juce::String& parameterID)
     return parameterID == "waveform"
         || parameterID == "pulseWidth"
         || parameterID == "overtones"
+        || parameterID == "osc1Pitch"
+        || parameterID == "osc2Waveform"
+        || parameterID == "osc2PulseWidth"
+        || parameterID == "osc2Overtones"
+        || parameterID == "osc2Pitch"
         || parameterID == "filterCutoff"
         || parameterID == "filterResonance"
         || parameterID == "amplitude";
@@ -208,7 +289,10 @@ bool ModEnvelopeEditor::isMainKnobParameter (const juce::String& parameterID)
 
 void ModEnvelopeEditor::attachKnobListeners()
 {
-    for (const auto& id : { "waveform", "pulseWidth", "overtones", "filterCutoff", "filterResonance", "amplitude" })
+    for (const auto& id : { "waveform", "pulseWidth", "overtones",
+                            "osc1Pitch",
+                            "osc2Waveform", "osc2PulseWidth", "osc2Overtones", "osc2Pitch",
+                            "filterCutoff", "filterResonance", "amplitude" })
         apvts.addParameterListener (id, this);
 
     for (int laneIndex = 0; laneIndex < ModulationEnvelope::numLanes; ++laneIndex)
@@ -381,21 +465,31 @@ void ModEnvelopeEditor::paintLaneStrip (juce::Graphics& g)
     for (int row = 0; row < numLaneStripRows; ++row)
     {
         const auto lane = laneForStripRow (row);
+        const auto displayedLane = displayedLaneForStripRow (lane, activeLane);
         auto rowBounds = getLaneRowBounds (row);
-        const auto isActive = lane == activeLane;
-        const auto isEnabled = envelope.isLaneEnabled (lane, apvts);
+        const auto isActive = laneMatchesStripRow (activeLane, lane);
+
+        auto isEnabled = envelope.isLaneEnabled (displayedLane, apvts);
+        auto isLoopEnabled = envelope.isLaneLoopEnabled (displayedLane);
+
+        if (! isActive && stripRowSupportsOscToggle (lane))
+        {
+            const auto osc2Lane = osc2VariantForStripRow (lane);
+            isEnabled = isEnabled || envelope.isLaneEnabled (osc2Lane, apvts);
+            isLoopEnabled = isLoopEnabled || envelope.isLaneLoopEnabled (osc2Lane);
+        }
 
         g.setColour (isActive ? juce::Colour (0xff2e383e) : juce::Colour (0xff222a2e));
         g.fillRoundedRectangle (rowBounds, 3.0f);
 
         if (isActive)
         {
-            g.setColour (laneColour (lane).withAlpha (0.35f));
+            g.setColour (laneColour (displayedLane).withAlpha (0.35f));
             g.drawRoundedRectangle (rowBounds, 3.0f, 1.0f);
         }
 
         const auto colourBar = rowBounds.removeFromLeft (5.0f).reduced (0.0f, 5.0f);
-        g.setColour (laneColour (lane).withAlpha (isEnabled ? 1.0f : 0.35f));
+        g.setColour (laneColour (displayedLane).withAlpha (isEnabled ? 1.0f : 0.35f));
         g.fillRoundedRectangle (colourBar, 2.0f);
 
         auto textArea = rowBounds.reduced (4.0f, 0.0f);
@@ -403,7 +497,7 @@ void ModEnvelopeEditor::paintLaneStrip (juce::Graphics& g)
 
         g.setColour (isActive ? juce::Colour (0xffe8ecef) : juce::Colour (0xff9aa3ab));
         g.setFont (juce::FontOptions (10.5f));
-        g.drawText (laneLabel (lane),
+        g.drawText (laneLabel (displayedLane),
                     textArea,
                     juce::Justification::centredLeft,
                     true);
@@ -412,16 +506,16 @@ void ModEnvelopeEditor::paintLaneStrip (juce::Graphics& g)
         auto dotX = rowBounds.getRight() - dotSize - 3.0f;
         const auto dotY = rowBounds.getCentreY() - dotSize * 0.5f;
 
-        if (envelope.isLaneLoopEnabled (lane))
+        if (isLoopEnabled)
         {
             dotX -= dotSize + 2.0f;
-            g.setColour (laneColour (lane).withAlpha (isEnabled ? 0.9f : 0.35f));
+            g.setColour (laneColour (displayedLane).withAlpha (isEnabled ? 0.9f : 0.35f));
             g.fillEllipse (dotX, dotY, dotSize, dotSize);
         }
 
         if (isEnabled)
         {
-            g.setColour (laneColour (lane));
+            g.setColour (laneColour (displayedLane));
             g.fillEllipse (rowBounds.getRight() - dotSize - 3.0f, dotY, dotSize, dotSize);
         }
     }
@@ -437,12 +531,18 @@ float ModEnvelopeEditor::laneToNormalized (Lane lane, float value) const
     switch (lane)
     {
         case Lane::shape:
+        case Lane::osc2Shape:
         case Lane::overtones:
+        case Lane::osc2Overtones:
         case Lane::resonance:
         case Lane::amplitude:
         case Lane::cutoff:
             return juce::jlimit (0.0f, 1.0f, value);
+        case Lane::pitch:
+        case Lane::osc2Pitch:
+            return juce::jlimit (0.0f, 1.0f, (value + 48.0f) / 96.0f);
         case Lane::width:
+        case Lane::osc2Width:
             return juce::jlimit (0.0f, 1.0f, (value + 1.0f) * 0.5f);
     }
 
@@ -456,12 +556,18 @@ float ModEnvelopeEditor::normalizedToLane (Lane lane, float normalized) const
     switch (lane)
     {
         case Lane::shape:
+        case Lane::osc2Shape:
         case Lane::overtones:
+        case Lane::osc2Overtones:
         case Lane::resonance:
         case Lane::amplitude:
         case Lane::cutoff:
             return normalized;
+        case Lane::pitch:
+        case Lane::osc2Pitch:
+            return normalized * 96.0f - 48.0f;
         case Lane::width:
+        case Lane::osc2Width:
             return normalized * 2.0f - 1.0f;
     }
 
@@ -475,6 +581,11 @@ juce::String ModEnvelopeEditor::laneLabel (Lane lane) const
         case Lane::shape:     return "Shape";
         case Lane::width:     return "Width";
         case Lane::overtones: return "Harmonics";
+        case Lane::pitch:     return "Pitch";
+        case Lane::osc2Shape:     return "Shape 2";
+        case Lane::osc2Width:     return "Width 2";
+        case Lane::osc2Overtones: return "Harmonics 2";
+        case Lane::osc2Pitch:     return "Pitch 2";
         case Lane::cutoff:    return "Cutoff";
         case Lane::resonance: return "Resonance";
         case Lane::amplitude: return "Amplitude";
@@ -490,6 +601,11 @@ juce::Colour ModEnvelopeEditor::laneColour (Lane lane) const
         case Lane::shape:     return juce::Colour (0xffff8c1a);
         case Lane::width:     return juce::Colour (0xff5eb8ff);
         case Lane::overtones: return juce::Colour (0xff9b7bff);
+        case Lane::pitch:     return juce::Colour (0xffe8b45c);
+        case Lane::osc2Shape:     return juce::Colour (0xffff8c1a);
+        case Lane::osc2Width:     return juce::Colour (0xff5eb8ff);
+        case Lane::osc2Overtones: return juce::Colour (0xff9b7bff);
+        case Lane::osc2Pitch:     return juce::Colour (0xffe8b45c);
         case Lane::cutoff:    return juce::Colour (0xff5fd38d);
         case Lane::resonance: return juce::Colour (0xffff6b9d);
         case Lane::amplitude: return juce::Colour (0xfff0d060);
@@ -929,7 +1045,8 @@ void ModEnvelopeEditor::mouseDown (const juce::MouseEvent& e)
 
     if (laneRowHit >= 0)
     {
-        setActiveLane (laneForStripRow (laneRowHit));
+        const auto rowLane = laneForStripRow (laneRowHit);
+        setActiveLane (laneForStripRowClick (rowLane, activeLane));
         return;
     }
 
