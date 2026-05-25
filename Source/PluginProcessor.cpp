@@ -1415,38 +1415,38 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             filteredSample = applyFilterLimiter (filteredSample, voice, filterLimiterCoeffs);
             outputSample += filteredSample;
 
-            const auto syncRatio = osc1MainInc > 1.0e-12
-                                 ? osc2MainInc / osc1MainInc
+            const auto syncRatio = osc2MainInc > 1.0e-12
+                                 ? osc1MainInc / osc2MainInc
                                  : 1.0;
 
             if (unisonSettings.count <= 1)
             {
                 bool masterWrapped = false;
-                advanceMasterPhase (voice.phase, osc1MainInc, masterWrapped);
+                advanceMasterPhase (voice.phase2, osc2MainInc, masterWrapped);
                 juce::ignoreUnused (masterWrapped);
-                voice.subPhase += osc1SubInc;
-                voice.fifthPhase += osc1FifthInc;
-                wrapPhase (voice.subPhase);
-                wrapPhase (voice.fifthPhase);
+                voice.subPhase2 += osc2SubInc;
+                voice.fifthPhase2 += osc2FifthInc;
+                wrapPhase (voice.subPhase2);
+                wrapPhase (voice.fifthPhase2);
 
                 if (oscSyncEnabled)
                 {
-                    syncSlavePhasesToMaster (voice.phase,
-                                             voice.subPhase,
-                                             voice.fifthPhase,
-                                             syncRatio,
-                                             voice.phase2,
+                    syncSlavePhasesToMaster (voice.phase2,
                                              voice.subPhase2,
-                                             voice.fifthPhase2);
+                                             voice.fifthPhase2,
+                                             syncRatio,
+                                             voice.phase,
+                                             voice.subPhase,
+                                             voice.fifthPhase);
                 }
                 else
                 {
-                    advanceFreeRunningPhases (voice.phase2,
-                                              voice.subPhase2,
-                                              voice.fifthPhase2,
-                                              osc2MainInc,
-                                              osc2SubInc,
-                                              osc2FifthInc);
+                    advanceFreeRunningPhases (voice.phase,
+                                              voice.subPhase,
+                                              voice.fifthPhase,
+                                              osc1MainInc,
+                                              osc1SubInc,
+                                              osc1FifthInc);
                 }
             }
             else
@@ -1455,34 +1455,34 @@ void NafTachyonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 {
                     const auto osc1MainIncU = voice.unisonPhaseIncrement[u] * osc1PitchRatio;
                     const auto osc2MainIncU = voice.unisonPhase2Increment[u] * osc2PitchRatio;
-                    const auto syncRatioU = osc1MainIncU > 1.0e-12 ? osc2MainIncU / osc1MainIncU : 1.0;
+                    const auto syncRatioU = osc2MainIncU > 1.0e-12 ? osc1MainIncU / osc2MainIncU : 1.0;
 
                     bool masterWrapped = false;
-                    advanceMasterPhase (voice.unisonPhase[u], osc1MainIncU, masterWrapped);
+                    advanceMasterPhase (voice.unisonPhase2[u], osc2MainIncU, masterWrapped);
                     juce::ignoreUnused (masterWrapped);
-                    voice.unisonSubPhase[u] += voice.unisonSubPhaseIncrement[u] * osc1PitchRatio;
-                    voice.unisonFifthPhase[u] += voice.unisonFifthPhaseIncrement[u] * osc1PitchRatio;
-                    wrapPhase (voice.unisonSubPhase[u]);
-                    wrapPhase (voice.unisonFifthPhase[u]);
+                    voice.unisonSubPhase2[u] += voice.unisonSubPhase2Increment[u] * osc2PitchRatio;
+                    voice.unisonFifthPhase2[u] += voice.unisonFifthPhase2Increment[u] * osc2PitchRatio;
+                    wrapPhase (voice.unisonSubPhase2[u]);
+                    wrapPhase (voice.unisonFifthPhase2[u]);
 
                     if (oscSyncEnabled)
                     {
-                        syncSlavePhasesToMaster (voice.unisonPhase[u],
-                                                 voice.unisonSubPhase[u],
-                                                 voice.unisonFifthPhase[u],
-                                                 syncRatioU,
-                                                 voice.unisonPhase2[u],
+                        syncSlavePhasesToMaster (voice.unisonPhase2[u],
                                                  voice.unisonSubPhase2[u],
-                                                 voice.unisonFifthPhase2[u]);
+                                                 voice.unisonFifthPhase2[u],
+                                                 syncRatioU,
+                                                 voice.unisonPhase[u],
+                                                 voice.unisonSubPhase[u],
+                                                 voice.unisonFifthPhase[u]);
                     }
                     else
                     {
-                        advanceFreeRunningPhases (voice.unisonPhase2[u],
-                                                  voice.unisonSubPhase2[u],
-                                                  voice.unisonFifthPhase2[u],
-                                                  osc2MainIncU,
-                                                  voice.unisonSubPhase2Increment[u] * osc2PitchRatio,
-                                                  voice.unisonFifthPhase2Increment[u] * osc2PitchRatio);
+                        advanceFreeRunningPhases (voice.unisonPhase[u],
+                                                  voice.unisonSubPhase[u],
+                                                  voice.unisonFifthPhase[u],
+                                                  osc1MainIncU,
+                                                  voice.unisonSubPhaseIncrement[u] * osc1PitchRatio,
+                                                  voice.unisonFifthPhaseIncrement[u] * osc1PitchRatio);
                     }
                 }
             }

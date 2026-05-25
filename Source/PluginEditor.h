@@ -100,6 +100,7 @@ private:
     NafTachyonAudioProcessor& audioProcessor;
 
     NafTachyonLookAndFeel customLookAndFeel;
+    juce::TooltipWindow tooltipWindow { this, 600 };
 
 
 

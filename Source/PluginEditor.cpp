@@ -188,6 +188,7 @@ NafTachyonAudioProcessorEditor::NafTachyonAudioProcessorEditor (NafTachyonAudioP
     configureKnob (mainGroup, oscMixSlider, oscMixLabel, "Mix");
 
     configureToggleButton (oscSyncToggle);
+    oscSyncToggle.setTooltip ("Sync: OSC 2 is the master oscillator. OSC 1 restarts and locks to OSC 2, while Mix still blends both oscillators.");
     mainGroup.addAndMakeVisible (oscSyncToggle);
 
     configureKnob (mainGroup, releaseTimeSlider, releaseTimeLabel, "Release Time");
